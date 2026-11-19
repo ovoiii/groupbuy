@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系统管理 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>const k = new URLSearchParams(location.search).get('k') || '系统管理'; window.__PAGE__ = { key: { 用户管理: '/system/user', 角色管理: '/system/role', 数据字典: '/system/dict' }[k], title: k };</script>
+<div id="page-body"><div class="ph"><div class="empty" id="e"></div></div></div>
+<script src="shell.js"></script>
+<script>document.getElementById('e').innerHTML = `${ico('settings')}<b>${k}</b><span>直接使用 JeecgBoot 自带页面，这次不改版。</span><a class="btn" href="index.html">回工作台</a>`;</script>
+</body>
+</html>

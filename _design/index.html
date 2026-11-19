@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>邻里鲜 · 社区团购原型</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  body { background: var(--c-bg-page); }
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 40px 40px 80px; }
+  .top { display: flex; align-items: center; gap: 16px; }
+  .top h1 { font-size: 32px; }
+  .top .sub { color: var(--c-text-2); }
+  .lead { margin-top: 14px; color: var(--c-text-2); line-height: 1.8; max-width: 52em; }
+  .flow { margin-top: 28px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: var(--c-surface); border: 1px solid var(--c-border-subtle); border-radius: 16px; overflow: hidden; }
+  .fs { padding: 18px 20px; position: relative; }
+  .fs + .fs { border-left: 1px solid var(--c-border-subtle); }
+  .fs .when { font-size: 13px; color: var(--c-text-3); font-variant-numeric: tabular-nums; }
+  .fs b { display: block; font-size: 17px; margin: 4px 0 6px; }
+  .fs p { font-size: 14px; color: var(--c-text-2); line-height: 1.65; }
+  .fs .who { display: inline-block; margin-top: 10px; font-size: 12px; padding: 2px 8px; border-radius: 4px; background: var(--c-bg-sunken); color: var(--c-text-2); }
+  .fs.now .when { color: var(--c-mark); font-weight: 600; }
+  h2.sec { font-size: 24px; margin: 56px 0 6px; }
+  p.sec-sub { color: var(--c-text-2); margin-bottom: 22px; }
+  .admin { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+  .ac { display: flex; flex-direction: column; background: var(--c-surface); border: 1px solid var(--c-border-subtle); border-radius: 16px; overflow: hidden; color: var(--c-text); transition: box-shadow var(--dur); }
+  .ac:hover { box-shadow: var(--shadow-pop); }
+  .ac .shot { height: 250px; overflow: hidden; position: relative; border-bottom: 1px solid var(--c-border-subtle); background: var(--c-bg-page); }
+  .ac .shot iframe { width: 1440px; height: 900px; border: 0; transform: scale(.3); transform-origin: 0 0; pointer-events: none; position: absolute; }
+  .ac .cap { padding: 14px 18px 18px; }
+  .ac .cap b { font-size: 16px; }
+  .ac .cap p { font-size: 14px; color: var(--c-text-2); line-height: 1.65; margin-top: 4px; }
+  .phones { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 36px 24px; }
+  .ph { display: flex; flex-direction: column; align-items: center; color: var(--c-text); }
+  .ph .fr { width: 260px; height: 563px; border-radius: 30px; overflow: hidden; box-shadow: 0 0 0 7px #16201A, 0 16px 40px rgba(19, 34, 26, .2); position: relative; background: var(--c-bg-page); }
+  .ph iframe { width: 375px; height: 812px; border: 0; transform: scale(.6934); transform-origin: 0 0; }
+  .ph .cap { width: 260px; margin-top: 18px; }
+  .ph .cap b { font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .ph .cap p { font-size: 14px; color: var(--c-text-2); line-height: 1.65; margin-top: 4px; }
+  .ph .cap a { font-size: 14px; font-weight: 600; display: inline-flex; min-height: 44px; align-items: center; }
+  .role { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: var(--c-primary-soft); color: var(--c-primary-active); }
+  .role.l { background: var(--c-sider); color: #fff; }
+  .brand { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+  .bk { background: var(--c-surface); border: 1px solid var(--c-border-subtle); border-radius: 16px; padding: 20px; }
+  .bk h3 { font-size: 16px; margin-bottom: 12px; }
+  .bk p { font-size: 14px; color: var(--c-text-2); line-height: 1.7; margin-top: 12px; }
+  .sw { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sw span { width: 44px; height: 44px; border-radius: 10px; }
+  .todo { background: var(--c-surface); border: 1px solid var(--c-border-subtle); border-radius: 16px; padding: 8px 24px; }
+  .todo li { padding: 10px 0; line-height: 1.7; color: var(--c-text-2); }
+  .todo li b { color: var(--c-text); }
+  @media (max-width: 1100px) { .admin { grid-template-columns: 1fr 1fr; } .flow { grid-template-columns: 1fr; } .fs + .fs { border-left: 0; border-top: 1px solid var(--c-border-subtle); } .brand { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 640px) { .wrap { padding: 24px 16px 56px; } .admin, .brand { grid-template-columns: minmax(0, 1fr); } .top h1 { font-size: 24px; } }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="data.js"></script>
+<div class="wrap">
+  <header class="top" id="top"></header>
+  <p class="lead">PC 运营后台 9 页 + 小程序 10 页（居民 8 页、团长 2 页），每一页都能点：加购、结算、改库存、审核售后、核销提货……示例时间固定为 11 月 17 日 周二 14:47，两端用同一份示例数据，数字对得上。「邻里鲜」是临时起的名字，可以换。</p>
+  <div class="flow" id="flow"></div>
+
+  <h2 class="sec">PC 运营后台</h2>
+  <p class="sec-sub">基于 admin-template（JeecgBoot）的外壳；点卡片进入，左侧菜单可以在各页之间跳。</p>
+  <div class="admin" id="admin"></div>
+
+  <h2 class="sec">小程序</h2>
+  <p class="sec-sub">按微信 375 宽画，右上角是微信强制显示的胶囊按钮。居民和团长用同一个小程序，团长账号在「我的」里多一个工作台入口。</p>
+  <div class="phones" id="phones"></div>
+
+  <h2 class="sec">品牌元素</h2>
+  <p class="sec-sub">完整定义见 brand.md。</p>
+  <div class="brand" id="brand"></div>
+
+  <h2 class="sec">这版没做的</h2>
+  <ul class="todo">
+    <li><b>团长佣金结算和提现</b>：这次没选。表结构里预留了佣金比例字段，以后加不用改订单。</li>
+    <li><b>团长入驻申请页（小程序）</b>：这次没选；后台审核页已经有，小程序「我的」里留了「申请当团长」入口。</li>
+    <li><b>商品分类页、搜索结果页、优惠券列表页</b>：首页已经有分类和搜索框，独立页面和首页列表长得一样，写代码时直接复用。</li>
+    <li><b>登录</b>：小程序走微信一键登录 + 手机号授权；后台用 JeecgBoot 自带登录页。</li>
+  </ul>
+</div>
+<script>
+  document.getElementById('top').innerHTML = `<svg width="48" height="48" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="7" fill="#078149"/><path d="M6.5 13.2 14 7l7.5 6.2V21a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-7.8Z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M14 20.5c-2.8-.4-4-2.6-3.4-5.4 2.6.1 4 1.9 3.4 5.4Zm0 0c2.8-.4 4-2.6 3.4-5.4-2.6.1-4 1.9-3.4 5.4Z" fill="#FFC24D"/></svg><div><h1>邻里鲜 · 社区团购原型</h1><div class="sub">PC 运营后台 + 微信小程序（居民 / 团长）· 确认后再写代码</div></div>`;
+  document.getElementById('flow').innerHTML = [
+    ['前一晚 23:00', '开团', '运营提前把团品、价格、库存配好，到点自动上架。', '后台 · 每日团期'],
+    ['全天', '居民下单', '选提货点、加购、用券、微信支付；截单前可以自己取消。', '小程序 · 首页 / 购物车'],
+    ['当晚 23:00', '截单', '停止下单，自动按商品汇总拣货量、按提货点拆单。', '后台 · 分拣配送'],
+    ['次日上午', '分拣配送', '仓库按提货点装箱发车，团长签收，少件当场登记。', '后台 · 分拣配送 / 团长端'],
+    ['次日 16:00 起', '到点自提', '居民出示提货码，团长扫码逐件点货交付；有问题走售后。', '小程序 · 提货码 / 核销'],
+  ].map(([w, b, p, who], i) => `<div class="fs${i === 1 ? ' now' : ''}"><span class="when">${w}</span><b>${b}</b><p>${p}</p><span class="who">${who}</span></div>`).join('');
+
+  const A = [
+    ['index.html', '工作台', '本期团的时间线和截单倒计时、销售额、待处理事项（售后、快卖完、未签收、入驻申请）。'],
+    ['period.html', '每日团期', '本期团品的库存和售罄情况，可以直接改库存、下架；下面是历史团期和提货率。'],
+    ['period-edit.html', '准备下一期团', '定开团 / 截单 / 提货时间，从商品库挑团品，填团购价和库存，毛利低于 25% 标红。'],
+    ['goods.html', '商品库', '采购价、建议团购价、毛利率、近 7 期销量；勾选后批量加入下一期团。'],
+    ['orders.html', '订单管理', '按状态、团期、提货点筛选；详情里有提货进度、提货码（脱敏）和金额明细。'],
+    ['sorting.html', '分拣配送', '按提货点看装车、发车、签收；切到「按商品汇总」看每个商品要拣多少、缺多少。'],
+    ['aftersale.html', '售后退款', '24 小时处理时限倒计时；审核时定退款金额和责任方（供应商 / 团长 / 平台），月底对账用。'],
+    ['leaders.html', '团长管理', '提货点、覆盖户数、本期订单和提货率；入驻审核会自动检查附近是否有重复提货点、有没有冰柜。'],
+    ['marketing.html', '优惠活动', '满减券、折扣券、新人 1 元购的领取量和核销率；新建优惠时能预览小程序里的样子。'],
+  ];
+  document.getElementById('admin').innerHTML = A.map(([h, b, p]) => `<a class="ac" href="admin/${h}" target="_blank"><div class="shot"><iframe src="admin/${h}" tabindex="-1" loading="lazy" title="${b}"></iframe></div><div class="cap"><b>${b}</b><p>${p}</p></div></a>`).join('');
+
+  const M = [
+    ['index.html', '首页', '居', '顶部选提货点；「今天下单，明天到小区自提」和截单倒计时；领券条；分类和团品列表，直接加减数量。'],
+    ['goods.html?id=1001', '商品详情', '居', '价格、已团份数、仅剩份数；提货时间轴说清楚「什么时候能拿到」；坏了包退说明。'],
+    ['cart.html', '购物车', '居', '提货点和截单时间放在最上面；自动提示满减还差多少。'],
+    ['checkout.html', '确认订单', '居', '到哪自提、提货人、优惠券（自动选最划算的）、给团长留言；点微信支付看支付成功。'],
+    ['orders.html', '我的订单', '居', '待付款 / 待截单 / 待提货 / 售后；截单前可以取消。'],
+    ['order.html', '提货码', '居', '二维码 + 6 位数字，提货点地址、导航、联系团长。'],
+    ['aftersale.html', '申请售后', '居', '选有问题的商品和原因，拍照，退款金额自动算。'],
+    ['mine.html?leader=1', '我的（团长账号）', '居', '优惠券、订单入口、提货点；团长账号多一个深色的「团长工作台」入口。'],
+    ['leader.html', '团长工作台', '团', '今天已取 / 待取进度、扫码核销、到货签收和短少登记、按手机尾号找订单、超时未取提醒。'],
+    ['verify.html?code=1', '核销提货', '团', '扫码或输入提货码后，逐件点货，全部点完才能确认交货，防止漏给。'],
+  ];
+  document.getElementById('phones').innerHTML = M.map(([h, b, r, p]) => `<div class="ph"><div class="fr"><iframe src="mp/${h}${h.includes('?') ? '&' : '?'}frame=0" loading="lazy" title="${b}"></iframe></div>
+    <div class="cap"><b><span class="role${r === '团' ? ' l' : ''}">${r === '团' ? '团长' : '居民'}</span>${b}</b><p>${p}</p><a href="mp/${h}" target="_blank">单独打开 →</a></div></div>`).join('');
+
+  document.getElementById('brand').innerHTML = `
+    <div class="bk"><h3>颜色</h3><div class="sw"><span style="background:#078149" title="主色 生鲜绿"></span><span style="background:#E12A24" title="价格红"></span><span style="background:#F14D05" title="加购 / 结算橙"></span><span style="background:#A06500" title="记号色 截单琥珀"></span><span style="background:#13221A" title="团长 / 侧栏深绿"></span></div>
+      <p>绿色是主色（生鲜、新鲜）。红色只给价格和优惠，橙色只给「加入购物车 / 去结算 / 微信支付」，琥珀色只表示截单和时限。</p></div>
+    <div class="bk"><h3>功能记号：提货牌</h3>${GB.pickup('幸福里 3 号楼便利店')}<p>代表核心卖点「今天下单，明天到小区自提」。首页、详情、购物车、结算、订单、提货码、后台团期页都用同一个样式。</p></div>
+    <div class="bk"><h3>记号色：截单倒计时</h3>${GB.cutoffHtml('距截单')}<p>每秒跳动，两端同一个时间。后台顶栏常驻，售后处理时限也用这个颜色。</p></div>
+    <div class="bk"><h3>Logo</h3><svg width="56" height="56" viewBox="0 0 28 28"><rect x="1" y="1" width="26" height="26" rx="7" fill="#078149"/><path d="M6.5 13.2 14 7l7.5 6.2V21a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-7.8Z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M14 20.5c-2.8-.4-4-2.6-3.4-5.4 2.6.1 4 1.9 3.4 5.4Zm0 0c2.8-.4 4-2.6 3.4-5.4-2.6.1-4 1.9-3.4 5.4Z" fill="#FFC24D"/></svg><p>屋顶代表小区和邻里，里面一片嫩芽代表新鲜。名字换了 Logo 也能用。</p></div>`;
+</script>
+</body>
+</html>

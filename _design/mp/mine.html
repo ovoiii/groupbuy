@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>我的 · 邻里鲜小程序</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="mp.css">
+<style>
+  .app { --bar-bg: var(--c-primary-soft); }
+  .me { background: var(--c-primary-soft); padding: 8px 16px 56px; display: flex; align-items: center; gap: 12px; }
+  .me .av { width: 56px; height: 56px; border-radius: 50%; background: var(--c-surface); color: var(--c-primary); display: grid; place-items: center; font-size: 22px; font-weight: 700; }
+  .me b { font-size: 19px; display: block; }
+  .me span { font-size: 13px; color: var(--c-text-2); }
+  .stats { margin: -42px 12px 12px; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--c-surface); border-radius: var(--r-card); padding: 14px 0; text-align: center; }
+  .stats a { color: var(--c-text); }
+  .stats b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stats span { font-size: 12px; color: var(--c-text-3); }
+  .stats a + a { border-left: 1px solid var(--c-border-subtle); }
+  .ords { display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 12px; }
+  .ords a { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--c-text-2); padding: 8px 0; position: relative; }
+  .ords .ico { width: 26px; height: 26px; color: var(--c-text); }
+  .ords .n { position: absolute; top: 2px; left: calc(50% + 8px); min-width: 18px; height: 18px; border-radius: 9px; background: var(--c-price); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; }
+  .newbie { margin: 0 12px 12px; padding: 14px; border-radius: var(--r-card); background: var(--c-price-soft); display: flex; align-items: center; gap: 12px; }
+  .newbie .ic { width: 44px; height: 44px; border-radius: 12px; background: var(--c-price); color: #fff; display: grid; place-items: center; }
+  .newbie b { display: block; }
+  .newbie span { font-size: 13px; color: var(--c-text-2); }
+  .newbie .mbtn { margin-left: auto; }
+  .leader { margin: 0 12px 12px; padding: 14px; border-radius: var(--r-card); background: var(--c-sider); color: #fff; display: flex; align-items: center; gap: 12px; }
+  .leader .ic { width: 44px; height: 44px; border-radius: 12px; background: rgba(255, 255, 255, .12); display: grid; place-items: center; color: var(--c-mark-bright); }
+  .leader b { display: block; }
+  .leader > div { min-width: 0; }
+  .leader div span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .leader span { font-size: 13px; opacity: .75; }
+  .leader .go { margin-left: auto; flex: none; white-space: nowrap; display: flex; align-items: center; gap: 2px; font-size: 14px; color: var(--c-mark-bright); font-weight: 600; }
+  .list .row-line { color: var(--c-text); }
+  .list .row-line > .ico { color: var(--c-text-2); }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<div class="app" data-tab="mine" data-nonav>
+  <main class="page" id="pg"></main>
+</div>
+<script src="mp.js"></script>
+<script>
+  const L = GB.leader(1);
+  const leaderMode = new URLSearchParams(location.search).get('leader') === '1';
+  const nm = leaderMode ? '王桂芳' : '张女士', ph = leaderMode ? L.phone : '138****1029';
+  document.getElementById('pg').innerHTML = `
+    <div class="me"><span class="av">${nm[0]}</span><div><b>${nm}</b><span class="num">${ph} · 默认提货点 ${GB.esc(L.point)}</span></div></div>
+    <div class="stats"><a href="#cp"><b>2</b><span>优惠券</span></a><a href="orders.html"><b>5</b><span>全部订单</span></a><a href="#"><b class="num">¥186</b><span>累计省下</span></a></div>
+    <div class="mcard"><div class="mcard-hd"><h2>我的订单</h2><a class="more" href="orders.html">全部${ico('chev-right', 'ico-sm')}</a></div>
+      <div class="ords"><a href="orders.html?t=unpaid">${ico('wallet')}待付款<span class="n">1</span></a><a href="orders.html?t=paid">${ico('timer')}待截单</a><a href="orders.html?t=arrived">${ico('package')}待提货<span class="n">1</span></a><a href="orders.html?t=refund">${ico('refund')}售后</a></div></div>
+    ${leaderMode ? `<a class="leader" href="leader.html"><span class="ic">${ico('store')}</span><div><b>团长工作台</b><span>${GB.esc(L.point)} · 今天 485 单待取</span></div><span class="go">进入${ico('chev-right', 'ico-sm')}</span></a>` : ''}
+    <div class="mcard list" id="cp">
+      <a class="row-line" href="index.html">${ico('ticket')}<span>我的优惠券</span><span class="v muted">满 39 减 5 等 2 张${ico('chev-right')}</span></a>
+      <a class="row-line" href="index.html">${ico('pin')}<span>我的提货点</span><span class="v muted">${GB.esc(L.point)}${ico('chev-right')}</span></a>
+      ${leaderMode ? '' : `<a class="row-line" href="#">${ico('store')}<span>申请当团长</span><span class="v muted">在家门口开个提货点${ico('chev-right')}</span></a>`}
+      <a class="row-line" href="#">${ico('message')}<span>联系客服</span><span class="v muted">09:00–21:00${ico('chev-right')}</span></a>
+      <a class="row-line" href="#">${ico('help')}<span>常见问题</span><span class="v muted">${ico('chev-right')}</span></a></div>
+    <div class="demo-tip">示例数据${leaderMode ? ' · 团长账号多一个「团长工作台」入口' : ''}</div>`;
+</script>
+</body>
+</html>

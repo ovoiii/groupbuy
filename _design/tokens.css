@@ -1,0 +1,161 @@
+/* ============================================================
+   邻里鲜 · 社区团购设计令牌（PC 后台 / 小程序共用）
+   改一处，三端原型同步生效。落代码时按 README「令牌 → 框架变量」对照表映射。
+   色值由 OKLCH 品牌化计算得出（种子 #12A05C 生鲜绿，色相不偏移、白底 4.95:1），不是手估。
+   ============================================================ */
+:root {
+  /* ---- 品牌主色 ---- */
+  --c-primary: #078149;          /* 白底 5.80:1，白字在其上 5.80:1 */
+  --c-primary-hover: #056E3D;
+  --c-primary-active: #006134;
+  --c-primary-soft: #E7F9EC;     /* 选中底、图标衬底；主色字在其上 5.22:1 */
+  --c-primary-soft-2: #CDF1D8;
+  --c-primary-border: #A4DEB7;
+
+  /* ---- 记号色：只表示「截单 / 时限」（截单倒计时、待处理时限），别挪作他用 ---- */
+  --c-mark: #A06500;             /* 白底 4.82:1 */
+  --c-mark-soft: #FFF1E2;
+  --c-mark-bright: #FFC24D;      /* 只用在深色/主色底上（Logo 对勾、深色侧栏角标） */
+
+  /* ---- 交易色：价格红只给价格 / 优惠，橙只给「加入购物车 / 去结算」两类按钮 ---- */
+  --c-price: #E12A24;            /* 白底 4.61:1 */
+  --c-price-soft: #FFEEEC;
+  --c-cta: #F14D05;              /* 白字 3.62:1，只用于 ≥16px 粗体按钮（AA 大字） */
+  --c-cta-hover: #D54201;
+
+  /* ---- 状态色（文字级，白底均 ≥ 4.8:1） ---- */
+  --c-success: #008341;  --c-success-soft: #E5FAEA;
+  --c-warning: #BC5200;  --c-warning-soft: #FFF0E9;
+  --c-danger:  #C04C48;  --c-danger-soft:  #FFEFEE;
+
+  /* ---- 中性色（混入 2–4% 主色色相，统一色温） ---- */
+  --c-bg-page: #F4F8F5;
+  --c-bg-sunken: #EDF2EE;
+  --c-surface: #FFFFFF;
+  --c-border-subtle: #E2E8E4;    /* 卡片、分隔线：1.25:1，装饰性 */
+  --c-border: #8F9691;           /* 输入框等交互控件边界：3.00:1（WCAG 非文本） */
+  --c-border-strong: #C9CCD4;    /* 次按钮描边（按钮靠文字识别，不需 3:1） */
+  --c-on-primary: #FFFFFF;
+  --c-text: #1D231F;             /* 15.9:1 */
+  --c-text-2: #535B56;           /* 7.0:1 */
+  --c-text-3: #6B716D;           /* 白底 4.94:1 / 页面底 4.61:1；不要放在 bg-sunken 上 */
+  --c-sider: #13221A;            /* 后台侧栏：整页唯一深色锚点 */
+  --c-sider-text: #B3C0B8;
+  --c-sider-hover: #1F3328;
+
+  /* ---- 字体（系统中文栈，不挂网络字体） ---- */
+  --font: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-num: "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --fw-regular: 400;
+  --fw-bold: 700;                /* 中文 500 在雅黑上会回落成常规体，强调一律用 600/700 或颜色 */
+  --fw-semi: 600;
+
+  /* ---- 字阶（相邻 ≥ 1.25 倍断层用于标题） ---- */
+  --fs-xs: 12px;  --fs-sm: 13px;  --fs-base: 14px;  --fs-md: 16px;
+  --fs-lg: 20px;  --fs-xl: 28px;  --fs-2xl: 36px;
+  --lh-tight: 1.3;  --lh-base: 1.6;  --lh-loose: 1.75;
+
+  /* ---- 圆角（简洁专业：控件小、容器中） ---- */
+  --r-tag: 4px;  --r-ctl: 6px;  --r-card: 10px;  --r-sheet: 16px;  --r-full: 999px;
+
+  /* ---- 阴影：只给浮层，卡片不用阴影（靠底色分层） ---- */
+  --shadow-pop: 0 6px 24px rgba(24, 30, 44, .12), 0 1px 3px rgba(24, 30, 44, .08);
+  --shadow-drawer: -12px 0 40px rgba(24, 30, 44, .16);
+
+  /* ---- 动效 ---- */
+  --dur-fast: 140ms;  --dur: 200ms;  --dur-slow: 280ms;
+  --ease-out: cubic-bezier(.22, .61, .36, 1);
+
+  /* ---- 间距契约 · 标准档（PC page.px 24 / 移动 16），全项目唯一 ---- */
+  --page-px: 24px;
+  --page-py: 20px;
+  --card-padding: 20px;
+  --card-padding-sm: 14px;
+  --card-gap: 16px;
+}
+
+/* 移动端整体降一档 */
+:root[data-platform] {
+  --page-px: 16px;
+  --page-py: 12px;
+  --card-padding: 16px;
+  --card-padding-sm: 12px;
+  --card-gap: 12px;
+  --r-card: 12px;
+  --r-ctl: 8px;
+  --fs-base: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
+}
+
+/* ---- 基础 ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--c-text);
+  background: var(--c-bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4 { margin: 0; font-weight: var(--fw-bold); line-height: var(--lh-tight); }
+p { margin: 0; }
+a { color: var(--c-primary); text-decoration: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.num small { font-size: .62em; font-weight: var(--fw-regular); margin-left: 2px; color: var(--c-text-2); }
+
+/* 图标：线性、描边 1.75、跟随文字色 */
+.ico { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.ico-sm { width: 16px; height: 16px; }
+.ico-lg { width: 22px; height: 22px; }
+
+/* 功能记号：待我处理（琥珀），全站同一写法 */
+.mk-todo {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 22px; padding: 0 8px; border-radius: var(--r-full);
+  background: var(--c-mark-soft); color: var(--c-mark);
+  font-size: var(--fs-xs); font-weight: var(--fw-semi); white-space: nowrap;
+}
+.mk-todo::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* 状态标签：soft 底、无描边 */
+.tag { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--r-tag); font-size: var(--fs-xs); white-space: nowrap; background: var(--c-bg-sunken); color: var(--c-text-2); }
+.tag.ok { background: var(--c-success-soft); color: var(--c-success); }
+.tag.warn { background: var(--c-warning-soft); color: var(--c-warning); }
+.tag.bad { background: var(--c-danger-soft); color: var(--c-danger); }
+.tag.pri { background: var(--c-primary-soft); color: var(--c-primary); }
+
+/* 示例数据声明：整站只放一处（页面顶部一行），不占首屏横带 */
+.demo-note { font-size: var(--fs-xs); color: var(--c-text-3); }
+
+/* ============ 社区团购专属记号 ============ */
+/* 功能记号 · 提货牌：定位针 + 「明天 16:00 起可提 · 提货点」。代表核心能力「今天下单、明天到小区自提」。每页至少 1 处 */
+.mk-pickup {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  height: 24px; padding: 0 9px 0 7px; border-radius: var(--r-full);
+  background: var(--c-primary-soft); color: var(--c-primary-active);
+  font-size: var(--fs-xs); font-weight: var(--fw-semi); white-space: nowrap;
+}
+.mk-pickup .ico { width: 14px; height: 14px; stroke-width: 2; }
+.mk-pickup b { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.mk-pickup .pt { font-weight: var(--fw-regular); overflow: hidden; text-overflow: ellipsis; }
+/* 记号色 · 截单倒计时（琥珀）：只表示「离截单还有多久」 */
+.mk-cutoff {
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px 0 7px; border-radius: var(--r-full);
+  background: var(--c-mark-soft); color: var(--c-mark); font-size: var(--fs-xs); font-weight: var(--fw-semi); white-space: nowrap;
+}
+.mk-cutoff .ico { width: 14px; height: 14px; stroke-width: 2; }
+.mk-cutoff b { font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
+/* 价格：¥ 和角分缩小，等宽数字 */
+.price { color: var(--c-price); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.price small { font-size: .8em; margin-right: 1px; }
+.price .jiao { font-size: .8em; }
+.orig { color: var(--c-text-3); text-decoration: line-through; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 商品图（SVG 示意，开发时换成实拍图） */
+.art { display: grid; place-items: center; border-radius: var(--r-ctl); overflow: hidden; flex: none; }
+.art svg { width: 72%; height: 72%; }

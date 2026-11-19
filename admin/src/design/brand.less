@@ -1,0 +1,66 @@
+// 品牌令牌（与 templates/_design/tokens.css 一致）。主色由主题配置 src/settings/designSetting.ts 控制，
+// 这里放主题 token 之外的补充色。页面里一律用变量，不直接写色值。
+html {
+  --brand-primary: var(--j-global-primary-color, #078149);
+  --brand-primary-soft: #e7f9ec;
+  --brand-primary-soft-2: #cdf1d8;
+  // 记号色：只表示「待我处理」
+  --brand-mark: #a06500;
+  --brand-mark-soft: #fff1e2;
+  --brand-success: #008341;
+  --brand-success-soft: #e5faea;
+  --brand-warning: #bc5200;
+  --brand-warning-soft: #fff0e9;
+  --brand-danger: #c04c48;
+  --brand-danger-soft: #ffefee;
+  --brand-surface: #ffffff;
+  --brand-bg-page: #f4f8f5;
+  --brand-bg-sunken: #edf2ee;
+  --brand-border-subtle: #e2e8e4;
+  --brand-text: #1d231f;
+  --brand-text-2: #535b56;
+  --brand-text-3: #6b716d;
+}
+
+html[data-theme='dark'] {
+  --brand-primary-soft: rgba(80, 190, 130, 0.16);
+  --brand-primary-soft-2: rgba(80, 190, 130, 0.28);
+  --brand-mark: #f0b429;
+  --brand-mark-soft: rgba(240, 180, 41, 0.16);
+  --brand-success: #3fbf7f;
+  --brand-success-soft: rgba(63, 191, 127, 0.16);
+  --brand-warning: #f08a45;
+  --brand-warning-soft: rgba(240, 138, 69, 0.16);
+  --brand-danger: #ef7d79;
+  --brand-danger-soft: rgba(239, 125, 121, 0.16);
+  --brand-surface: #1f1f1f;
+  --brand-bg-page: #141414;
+  --brand-bg-sunken: #2a2a2a;
+  --brand-border-subtle: #303030;
+  --brand-text: rgba(255, 255, 255, 0.88);
+  --brand-text-2: rgba(255, 255, 255, 0.65);
+  --brand-text-3: rgba(255, 255, 255, 0.5);
+}
+
+// 功能记号：待我处理
+.mk-todo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--brand-mark-soft);
+  color: var(--brand-mark);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+}

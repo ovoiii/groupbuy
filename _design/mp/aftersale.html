@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>申请售后 · 邻里鲜小程序</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="mp.css">
+<style>
+  .it { display: grid; grid-template-columns: 22px 56px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 14px; }
+  .it .art { border-radius: 8px; }
+  .it .nm { font-size: 15px; font-weight: 600; }
+  .it .sp { font-size: 12px; color: var(--c-text-3); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 14px; }
+  .chips button { height: 44px; padding: 0; border: 0; background: none; }
+  .chips span { display: grid; place-items: center; height: 34px; padding: 0 14px; border-radius: 17px; background: var(--c-bg-page); font-size: 14px; color: var(--c-text-2); }
+  .chips .on span { background: var(--c-primary-soft); color: var(--c-primary-active); font-weight: 600; box-shadow: inset 0 0 0 1px var(--c-primary-border); }
+  textarea { width: 100%; border: 0; resize: none; font-size: 16px; padding: 0 14px; background: none; outline: none; height: 72px; }
+  .ph { display: flex; gap: 10px; padding: 4px 14px 14px; }
+  .ph .add { width: 76px; height: 76px; border-radius: 8px; border: 1px dashed var(--c-border); display: grid; place-items: center; color: var(--c-text-3); font-size: 12px; text-align: center; background: none; }
+  .ph .art { border-radius: 8px; }
+  .refund { display: flex; align-items: baseline; gap: 6px; padding: 14px; }
+  .refund .price { font-size: 24px; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<div class="app" data-title="申请售后" data-back="order.html">
+  <main class="page" id="pg"></main>
+  <div class="actbar"><div class="sum">审核通过后原路退回微信<small>一般 2 小时内处理，最晚 24 小时</small></div><button class="mbtn pri" id="sub">提交</button></div>
+</div>
+<script src="mp.js"></script>
+<script>
+  const { art, esc, money } = GB;
+  const items = [[1002, 1], [1004, 2]];
+  const sel = new Set([1002]);
+  let reason = '质量问题';
+  function draw() {
+    const amt = [...sel].reduce((s, id) => s + GB.goods(id).price * items.find((x) => x[0] === id)[1], 0);
+    document.getElementById('pg').innerHTML = `
+      <div class="mcard" style="margin-top:12px"><div class="mcard-hd"><h2>哪件有问题</h2></div>
+        ${items.map(([id, n]) => { const g = GB.goods(id); return `<div class="it"><button class="ck${sel.has(id) ? ' on' : ''}" data-id="${id}" aria-label="选择">${ico('check')}</button>${art(g.art, 56, 8)}<div style="min-width:0"><div class="nm">${esc(g.name)}</div><div class="sp">${esc(g.spec)} × ${n}</div></div>${money(g.price * n)}</div>`; }).join('')}</div>
+      <div class="mcard"><div class="mcard-hd"><h2>遇到了什么问题</h2></div><div class="chips" id="rs">${['质量问题', '少件', '破损', '发错货', '没来得及取'].map((r) => `<button class="${r === reason ? 'on' : ''}"><span>${r}</span></button>`).join('')}</div>
+        <textarea placeholder="说说具体情况，比如：打开有 3 个蛋碎了"></textarea>
+        <div class="ph">${art('egg', 76, 8)}<button class="add">${ico('plus')}<br>拍照</button></div>
+        <p class="muted" style="font-size:12px;padding:0 14px 14px">${reason === '质量问题' || reason === '破损' ? '质量问题和破损请拍清楚商品，至少 1 张' : reason === '没来得及取' ? '团长会先帮你保管，提货期结束仍未取再退款' : '照片选填'}</p></div>
+      <div class="mcard"><div class="refund"><span class="muted">退款金额</span>${money(amt)}<span class="muted" style="font-size:12px;margin-left:auto">按实付比例计算</span></div></div>
+      <div class="demo-tip">示例数据</div>`;
+  }
+  draw();
+  document.getElementById('pg').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-id]'); if (c) { const id = +c.dataset.id; sel.has(id) ? sel.delete(id) : sel.add(id); draw(); }
+    const r = e.target.closest('#rs button'); if (r) { reason = r.textContent; draw(); }
+    if (e.target.closest('.add')) mtoast('打开相机（原型）');
+  });
+  document.getElementById('sub').onclick = () => { if (!sel.size) { mtoast('先选有问题的商品'); return; } mtoast('已提交，处理结果会发微信通知'); setTimeout(() => (location.href = 'orders.html?t=refund'), 1200); };
+</script>
+</body>
+</html>

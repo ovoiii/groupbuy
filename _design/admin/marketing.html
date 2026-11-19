@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>优惠活动 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+<style>
+  .coupon-face { display: flex; align-items: center; gap: 12px; }
+  .cf-val { width: 72px; height: 48px; border-radius: 8px; background: var(--c-price-soft); color: var(--c-price); display: flex; align-items: baseline; justify-content: center; padding-top: 12px; font-weight: 700; font-size: 18px; flex: none; font-variant-numeric: tabular-nums; position: relative; }
+  .cf-val small { font-size: 12px; }
+  .cf-val.out { background: var(--c-bg-sunken); color: var(--c-text-3); }
+  .rate { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+  .rate .bar-mini { width: 100%; margin: 0; }
+  .rate span { font-size: var(--fs-xs); color: var(--c-text-3); display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+  .cards3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--card-gap); margin-bottom: var(--card-gap); }
+  .preview { display: flex; gap: 10px; align-items: center; padding: 12px; border-radius: var(--r-card); background: var(--c-bg-page); }
+  .preview .cf-val { width: 88px; height: 56px; padding-top: 14px; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>window.__PAGE__ = { key: '/gb/coupons', title: '优惠活动' };</script>
+
+<div id="page-body">
+  <div class="page-head">
+    <div><h1>优惠活动</h1><p>优惠券、新人专享和满减活动。优惠金额由平台承担。</p></div>
+    <div class="actions"><button class="btn primary" id="btnNew"></button></div>
+  </div>
+  <div class="cards3" id="kpis"></div>
+  <section class="card">
+    <div class="toolbar"><div class="seg" data-seg="t"><button class="on" data-v="">全部 <span class="n">5</span></button><button data-v="满减券">满减券 <span class="n">3</span></button><button data-v="折扣券">折扣券 <span class="n">1</span></button><button data-v="新人专享">新人专享 <span class="n">1</span></button></div>
+      <span class="grow"></span><span style="font-size:var(--fs-xs);color:var(--c-text-3)">核销率 = 已使用 ÷ 已领取</span></div>
+    <div class="tbl-wrap"><table class="tbl" id="tbl"></table></div>
+  </section>
+  <p class="foot-note">本原型所有数字均为示例数据。</p>
+</div>
+
+<script src="shell.js"></script>
+<script>
+  const { COUPONS, ORDERS, yuan, esc } = GB;
+  document.getElementById('btnNew').innerHTML = ico('plus') + '新建优惠';
+  document.getElementById('kpis').innerHTML = [
+    ['本期用券订单', '418', '占本期订单 32.5%', 'ticket'],
+    ['本期优惠金额', yuan(2716.5), '占本期销售额 5.1%', 'wallet'],
+    ['本期新人首单', '87', '新人 1 元购带来，其中 61 人还买了别的', 'gift'],
+  ].map(([k, v, d, i]) => `<div class="kpi"><span class="k">${ico(i)}${k}</span><span class="v num">${v}</span><span class="d">${d}</span></div>`).join('');
+  const ST = { on: ['进行中', 'ok'], out: ['已领完', ''], plan: ['未开始', 'pri'] };
+  let t = '';
+  function draw() {
+    const rows = COUPONS.filter((c) => !t || c.type === t);
+    document.getElementById('tbl').innerHTML = `<thead><tr><th>优惠</th><th>适用范围</th><th>有效期</th><th>领取 / 发放</th><th>核销率</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows.map((c) => {
+      const val = typeof c.value === 'number' ? `<small>¥</small>${c.value}` : c.value;
+      const got = c.total ? c.got / c.total : 0, used = c.got ? c.used / c.got : 0;
+      return `<tr data-id="${c.id}"><td><div class="coupon-face"><span class="cf-val${c.status === 'out' ? ' out' : ''}" style="${String(c.value).length > 3 ? 'font-size:14px;padding-top:15px' : ''}">${val}</span><div class="cell-2"><b>${esc(c.name)}</b><span class="sub">${c.type} · ${esc(c.rule)}</span></div></div></td>
+        <td>${esc(c.scope)}</td><td class="num">${c.valid}</td>
+        <td><div class="rate"><span${c.total ? '' : ' style="justify-content:flex-start;gap:4px"'}><b style="color:var(--c-text)">${c.got.toLocaleString()}</b>${c.total ? ' / ' + c.total.toLocaleString() : ' 人领取（不限量）'}</span>${c.total ? `<span class="bar-mini${got >= 1 ? ' hot' : ''}"><i style="width:${got * 100}%"></i></span>` : ''}</div></td>
+        <td>${c.got ? `<b class="num">${Math.round(used * 100)}%</b> <span style="font-size:var(--fs-xs);color:var(--c-text-3)">${c.used.toLocaleString()} 张</span>` : '—'}</td>
+        <td><span class="tag ${ST[c.status][1]}">${ST[c.status][0]}</span></td>
+        <td><div class="acts">${c.status === 'on' ? '<button class="link" data-edit>编辑</button><button class="link muted" data-stop>停止发放</button>' : c.status === 'plan' ? '<button class="link" data-edit>编辑</button>' : '<button class="link" data-add>追加 1000 张</button>'}</div></td></tr>`;
+    }).join('')}</tbody>`;
+  }
+  draw();
+  bindSeg(document, (k, v) => { t = v; draw(); });
+  document.getElementById('tbl').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return; const c = COUPONS.find((x) => x.id === +tr.dataset.id);
+    if (e.target.closest('[data-stop]')) { if (confirm(`停止发放「${c.name}」？已领的券到期前仍可用。`)) { c.status = 'out'; draw(); toast('已停止发放'); } }
+    if (e.target.closest('[data-add]')) { c.total += 1000; c.status = 'on'; draw(); toast('已追加 1000 张'); }
+    if (e.target.closest('[data-edit]')) form(c);
+  });
+  document.getElementById('btnNew').onclick = () => form(null);
+  function form(c) {
+    const type = c ? c.type : '满减券';
+    const d = openDrawer(c ? '编辑优惠' : '新建优惠', `
+      <div class="field" style="margin-bottom:16px"><label>类型</label><div class="radio-cards" id="tp">${['满减券', '折扣券', '新人专享'].map((x) => `<span class="radio-card${x === type ? ' on' : ''}">${x}</span>`).join('')}</div></div>
+      <div class="form-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+        <div class="field" style="grid-column:1/-1"><label><span class="req">*</span>名称（居民能看到）</label><input class="input" value="${c ? esc(c.name) : '满 39 减 5'}"></div>
+        <div class="field"><label><span class="req">*</span>使用门槛</label><div class="input-unit"><input class="input num" value="39"><span>元起用</span></div></div>
+        <div class="field"><label><span class="req">*</span>减免</label><div class="input-unit"><input class="input num" value="${c && typeof c.value === 'number' ? c.value : 5}"><span>元</span></div></div>
+        <div class="field"><label>发放总量</label><div class="input-unit"><input class="input num" value="${c ? c.total : 5000}"><span>张</span></div></div>
+        <div class="field"><label>每人限领</label><div class="input-unit"><input class="input num" value="1"><span>张</span></div></div>
+        <div class="field"><label>有效期</label><select class="select"><option>领取后 7 天</option><option>领取后 3 天</option><option>固定日期</option></select></div>
+        <div class="field"><label>适用商品</label><select class="select"><option>全部商品</option><option>指定类目</option><option>指定商品</option></select></div>
+        <div class="field" style="grid-column:1/-1"><label>领取方式</label><div class="radio-cards"><span class="radio-card on">首页领券条</span><span class="radio-card">下单页可领</span><span class="radio-card">只能后台发放</span></div></div>
+      </div>
+      <div class="field" style="margin-top:20px"><label>小程序里长这样</label><div class="preview"><span class="cf-val"><small>¥</small>5</span><div class="cell-2"><b>满 39 减 5</b><span class="sub">领取后 7 天内有效 · 全部商品</span></div><span class="btn primary" style="margin-left:auto;height:30px">领取</span></div></div>`,
+      `<button class="btn" data-close-drawer>取消</button><button class="btn primary" onclick="closeDrawer();toast('已保存')">保存</button>`, 600);
+    d.querySelector('#tp').onclick = (e) => { const x = e.target.closest('.radio-card'); if (x) d.querySelectorAll('#tp .radio-card').forEach((y) => y.classList.toggle('on', y === x)); };
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>分拣配送 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+<style>
+  .route { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--card-gap); }
+  .pt { display: flex; flex-direction: column; background: var(--c-surface); border: 1px solid var(--c-border-subtle); border-radius: var(--r-card); padding: 16px; gap: 12px; }
+  .pt-hd { display: flex; align-items: flex-start; gap: 8px; }
+  .pt-hd b { font-size: var(--fs-md); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pt-hd small { color: var(--c-text-3); font-size: var(--fs-xs); display: block; white-space: nowrap; }
+  .pt-hd > .ico { margin-top: 3px; color: var(--c-primary); }
+  .pt-hd .tag { margin-left: auto; flex: none; }
+  .pt-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 0; border-top: 1px solid var(--c-border-subtle); border-bottom: 1px solid var(--c-border-subtle); }
+  .pt-nums span { font-size: var(--fs-xs); color: var(--c-text-3); }
+  .pt-nums b { display: block; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; color: var(--c-text); }
+  .pt-track { list-style: none; margin: 0; padding: 0; font-size: var(--fs-sm); color: var(--c-text-3); }
+  .pt-track li { display: flex; gap: 8px; align-items: center; height: 26px; }
+  .pt-track li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c-border-strong); flex: none; }
+  .pt-track li.ok { color: var(--c-text); }
+  .pt-track li.ok::before { background: var(--c-primary); }
+  .pt-track li.now { color: var(--c-mark); font-weight: var(--fw-semi); }
+  .pt-track li.now::before { background: var(--c-mark); box-shadow: 0 0 0 3px var(--c-mark-soft); }
+  .pt-track .t { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .pt-ft { display: flex; gap: 8px; margin-top: auto; }
+  .pt-ft .btn { flex: 1; }
+  .diff { color: var(--c-danger); font-weight: var(--fw-semi); }
+  .seg-big { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>window.__PAGE__ = { key: '/gb/sorting', title: '分拣配送' };</script>
+
+<div id="page-body">
+  <div class="page-head">
+    <div><h1>分拣配送 · 11月16日团</h1><p>昨晚 23:00 截单，共 1,652 单。今天 16:00 起居民到提货点自提，提货点签收前要送到。</p></div>
+    <div class="actions">
+      <select class="select" style="width:auto"><option>11月16日团（配送中）</option><option>11月15日团（已完成）</option><option disabled>11月17日团（23:00 截单后生成）</option></select>
+    </div>
+  </div>
+
+  <div class="seg seg-big" data-seg="view"><button class="on" data-v="pt">按提货点配送 <span class="n hot">2 个未签收</span></button><button data-v="goods">按商品汇总拣货</button></div>
+
+  <div id="vPt">
+    <div class="route" id="route"></div>
+  </div>
+  <section class="card" id="vGoods" hidden>
+    <div class="card-hd"><h2>拣货汇总</h2><span style="font-size:var(--fs-xs);color:var(--c-text-3)">应拣 = 本团期已支付订单的商品数量合计（已扣截单前取消的）；实到 = 仓库收货数</span>
+      <span style="margin-left:auto;display:flex;gap:8px"><button class="btn" id="prtAll"></button></span></div>
+    <div class="tbl-wrap"><table class="tbl" id="gtbl"></table></div>
+  </section>
+  <p class="foot-note">本原型所有数字均为示例数据。</p>
+</div>
+
+<script src="shell.js"></script>
+<script>
+  const { GOODS, LEADERS, yuan, art, esc } = GB;
+  const PTS = [
+    { l: 3, orders: 262, items: 618, boxes: 14, s: 'shipping', track: [['分拣完成', '10:31'], ['司机发车', '13:20'], ['预计送达', '15:10']] },
+    { l: 4, orders: 361, items: 857, boxes: 19, s: 'sorting', track: [['分拣中 · 已装 15/19 箱', '14:40'], ['司机发车', '—'], ['团长签收', '—']] },
+    { l: 2, orders: 498, items: 1203, boxes: 26, s: 'signed', track: [['分拣完成', '09:40'], ['司机发车', '11:05'], ['团长签收', '12:18']] },
+    { l: 1, orders: 531, items: 1290, boxes: 28, s: 'signed', track: [['分拣完成', '09:52'], ['司机发车', '11:05'], ['团长签收', '12:46'], ['短少 1 件已登记', '12:50']] , short: '黑猪五花肉 少 1 盒' },
+  ];
+  const STS = { signed: ['团长已签收', 'ok'], shipping: ['配送中', 'pri'], sorting: ['分拣中', 'warn'] };
+  document.getElementById('route').innerHTML = PTS.map((p, i) => {
+    const L = GB.leader(p.l), now = p.s === 'signed' ? -1 : p.s === 'shipping' ? 2 : 0;
+    return `<div class="pt"><div class="pt-hd">${ico('pin')}<div style="min-width:0"><b>${esc(L.point)}</b><small>团长 ${esc(L.leader)} · <span class="num">${L.phone}</span></small></div><span class="tag ${STS[p.s][1]}">${STS[p.s][0]}</span></div>
+      <div class="pt-nums"><div><span>订单</span><b>${p.orders}</b></div><div><span>商品件数</span><b>${p.items.toLocaleString()}</b></div><div><span>周转箱</span><b>${p.boxes}</b></div></div>
+      <ul class="pt-track">${p.track.map(([n, t], k) => `<li class="${now === -1 || k < now ? 'ok' : k === now ? 'now' : ''}">${n}<span class="t">${t}</span></li>`).join('')}</ul>
+      ${p.short ? `<div class="tag bad" style="align-self:flex-start">${ico('alert', 'ico-sm')}${p.short}，已转售后</div>` : ''}
+      <div class="pt-ft"><button class="btn" data-print="${i}">${ico('print')}提货清单</button>${p.s === 'sorting' ? `<button class="btn primary" data-go="${i}">${ico('truck')}装车发出</button>` : p.s === 'shipping' ? `<button class="btn" onclick="toast('司机 张师傅 · 139****2207，预计 15:10 到')">${ico('phone')}联系司机</button>` : ''}</div></div>`;
+  }).join('');
+  document.getElementById('route').addEventListener('click', (e) => {
+    const p = e.target.closest('[data-print]'); if (p) toast(`正在打印「${GB.leader(PTS[+p.dataset.print].l).point}」提货清单：按手机尾号排序，团长按单发货`);
+    const g = e.target.closest('[data-go]'); if (g) { if (confirm('还有 4 箱没装，确定先发车？')) toast('已标记发车，团长会在小程序收到到货提醒'); }
+  });
+
+  // 按商品汇总（11/16 团：示例数据）
+  const pick = GOODS.filter((g) => !g.off).map((g, i) => ({ g, need: Math.round(g.sold * 1.18) + 12, got: Math.round(g.sold * 1.18) + 12 - (g.id === 1008 ? 1 : 0) }));
+  document.getElementById('gtbl').innerHTML = `<thead><tr><th>商品</th><th>供应商</th><th class="num-r">应拣</th><th class="num-r">实到</th><th class="num-r">幸福里</th><th class="num-r">阳光花园</th><th class="num-r">翠竹苑</th><th class="num-r">和平里</th><th>状态</th></tr></thead><tbody>${pick.map(({ g, need, got }) => {
+    const r = [0.32, 0.30, 0.16, 0.22].map((x) => Math.round(need * x)); r[3] = need - r[0] - r[1] - r[2];
+    const diff = got - need;
+    return `<tr><td><div class="goods-cell">${art(g.art, 36)}<div style="min-width:0"><div class="nm">${esc(g.name)}</div><div class="sub">${esc(g.spec)}</div></div></div></td><td>${esc(g.supplier)}</td>
+      <td class="num-r"><b>${need}</b></td><td class="num-r">${got}${diff ? `<span class="sub diff">缺 ${-diff}</span>` : ''}</td>${r.map((x) => `<td class="num-r">${x}</td>`).join('')}
+      <td>${diff ? `<span class="tag bad">缺货 ${-diff}</span>` : '<span class="tag ok">已拣完</span>'}</td></tr>`;
+  }).join('')}</tbody>`;
+  document.getElementById('prtAll').innerHTML = ico('print') + '打印拣货单';
+  document.getElementById('prtAll').onclick = () => toast('正在打印拣货单（按商品，一品一行）');
+  bindSeg(document, (k, v) => { document.getElementById('vPt').hidden = v !== 'pt'; document.getElementById('vGoods').hidden = v !== 'goods'; });
+</script>
+</body>
+</html>

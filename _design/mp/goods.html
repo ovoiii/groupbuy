@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>商品详情 · 邻里鲜小程序</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="mp.css">
+<style>
+  .hero .art { width: 100% !important; height: 300px !important; border-radius: 0; }
+  .hero .art svg { width: 56%; height: 56%; }
+  .hero { position: relative; }
+  .hero .idx { position: absolute; right: 14px; bottom: 12px; padding: 2px 10px; border-radius: 10px; background: rgba(0, 0, 0, .35); color: #fff; font-size: 12px; }
+  .pricebar { display: flex; align-items: center; gap: 10px; padding: 12px var(--page-px); background: var(--c-price-soft); }
+  .pricebar .price { font-size: 30px; }
+  .pricebar .orig { font-size: 13px; }
+  .pricebar .r { margin-left: auto; text-align: right; font-size: 12px; color: var(--c-text-2); line-height: 1.5; }
+  .pricebar .r b { color: var(--c-mark); font-variant-numeric: tabular-nums; }
+  .info { padding: 14px var(--page-px) 16px; background: var(--c-surface); margin-bottom: 10px; }
+  .info h1 { font-size: 19px; line-height: 1.4; }
+  .info .sp { color: var(--c-text-2); margin-top: 4px; font-size: 14px; }
+  .info .tags { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .pick { margin: 0 12px 10px; padding: 14px; border-radius: var(--r-card); background: var(--c-surface); display: grid; grid-template-columns: 40px 1fr; gap: 4px 12px; }
+  .pick .ic { grid-row: span 2; width: 40px; height: 40px; border-radius: 10px; background: var(--c-primary-soft); color: var(--c-primary); display: grid; place-items: center; }
+  .pick b { font-size: 15px; }
+  .pick span { font-size: 13px; color: var(--c-text-2); }
+  .flow { display: flex; margin-top: 12px; grid-column: 1 / -1; font-size: 12px; color: var(--c-text-3); }
+  .flow div { flex: 1; text-align: center; position: relative; padding-top: 16px; }
+  .flow div::before { content: ""; position: absolute; top: 4px; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--c-primary-soft-2); }
+  .flow div::after { content: ""; position: absolute; top: 7px; left: calc(50% + 6px); right: calc(-50% + 6px); height: 2px; background: var(--c-primary-soft-2); }
+  .flow div:last-child::after { display: none; }
+  .flow div.on { color: var(--c-primary-active); font-weight: 600; }
+  .flow div.on::before { background: var(--c-primary); }
+  .flow b { display: block; font-weight: 600; color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .detail { padding: 14px var(--page-px); background: var(--c-surface); }
+  .detail h2 { font-size: 16px; margin-bottom: 10px; }
+  .detail dl { display: grid; grid-template-columns: 72px 1fr; gap: 8px; margin: 0; font-size: 14px; }
+  .detail dt { color: var(--c-text-3); }
+  .detail dd { margin: 0; }
+  .guar { margin-top: 14px; padding: 12px; border-radius: 10px; background: var(--c-bg-page); font-size: 13px; color: var(--c-text-2); line-height: 1.6; display: flex; gap: 8px; }
+  .guar .ico { color: var(--c-primary); flex: none; margin-top: 2px; }
+  .cart-ic { width: 52px; min-height: 44px; justify-content: center; display: flex; flex-direction: column; align-items: center; font-size: 12px; color: var(--c-text-2); position: relative; }
+  .cart-ic .ico { width: 24px; height: 24px; }
+  .cart-ic .badge { position: absolute; top: -4px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--c-price); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<div class="app" data-title="商品详情" data-back="index.html">
+  <main class="page" id="pg"></main>
+  <div class="actbar" id="bar"></div>
+</div>
+<script src="mp.js"></script>
+<script>
+  const { money, art, esc } = GB;
+  const g = GB.goods(+new URLSearchParams(location.search).get('id') || 1001), L = GB.leader(1);
+  const left = g.stock - g.sold;
+  document.getElementById('pg').innerHTML = `
+    <div class="hero">${art(g.art, 300)}<span class="idx">1 / 4</span></div>
+    <div class="pricebar">${money(g.price)}<span class="orig">超市价 ¥${g.orig}</span><span class="r">已团 <b>${g.sold}</b> 份${left / g.stock <= 0.1 ? `<br><b>仅剩 ${left} 份</b>` : ''}<br>${GB.cutoffHtml('截单')}</span></div>
+    <div class="info"><h1>${esc(g.name)}</h1><div class="sp">${esc(g.spec)}</div>
+      <div class="tags">${g.tag ? `<span class="tag warn">${g.tag}</span>` : ''}${g.limit ? `<span class="tag">每人限购 ${g.limit} 份</span>` : ''}<span class="tag pri">坏了包退</span></div></div>
+    <div class="pick"><span class="ic">${ico('pin')}</span><b>明天 16:00 起到小区自提</b><span>${esc(L.point)} · 团长 ${esc(L.leader)}</span>
+      <div class="flow"><div class="on"><b>今天</b>下单</div><div><b>23:00</b>截单</div><div><b>明天上午</b>送到提货点</div><div><b>16:00 起</b>凭码自提</div></div></div>
+    <div class="detail"><h2>商品信息</h2><dl><dt>产地</dt><dd>${esc(g.origin || '—')}</dd><dt>供应商</dt><dd>${esc(g.supplier)}</dd><dt>储存</dt><dd>${['乳品烘焙', '肉禽蛋', '水产'].includes(g.cat) ? '冷藏 0–4℃，提货后尽快放冰箱' : '阴凉处常温保存'}</dd><dt>超市价</dt><dd>¥${g.orig}（附近超市同规格售价，仅供参考）</dd></dl>
+      <div class="guar">${ico('shield')}<span>坏了包退：提货后 24 小时内，拍照在「订单 → 申请售后」提交，审核通过原路退款。</span></div></div>
+    <div class="demo-tip">示例数据，商品图为示意</div>`;
+  function bar() {
+    const n = Cart.qty(g.id);
+    document.getElementById('bar').innerHTML = `<a class="cart-ic" href="cart.html">${ico('cart')}购物车<span class="badge js-cart-n"></span></a><span class="sum"></span>
+      ${n ? `<span class="js-step">${stepperHtml(g.id, n, g.limit)}</span><a class="mbtn cta" href="cart.html">去结算</a>` : `<button class="mbtn cta" style="flex:none;width:200px" data-d="1" ${left <= 0 ? 'disabled' : ''}>${left <= 0 ? '已抢光' : '加入购物车'}</button>`}`;
+    Cart.badge();
+  }
+  bar();
+  document.getElementById('bar').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-d]'); if (!b) return;
+    const n = Cart.add(g.id, +b.dataset.d);
+    if (g.limit && n > g.limit) { Cart.add(g.id, -1); mtoast(`每人限购 ${g.limit} 份`); }
+    if (+b.dataset.d > 0 && n === 1) mtoast('已加入购物车');
+    bar();
+  });
+</script>
+</body>
+</html>

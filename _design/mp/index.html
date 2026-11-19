@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>首页 · 邻里鲜小程序</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="mp.css">
+<style>
+  .app { --bar-bg: var(--c-primary-soft); }
+  .hd { background: var(--c-primary-soft); padding: 2px var(--page-px) 14px; }
+  .pt-sel { display: flex; align-items: center; gap: 4px; min-height: 44px; max-width: calc(100% - 92px); color: var(--c-text); }
+  .pt-sel .ico { color: var(--c-primary); width: 18px; height: 18px; }
+  .pt-sel b { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pt-sel .chev { color: var(--c-text-3); width: 16px; height: 16px; flex: none; }
+  .pt-sub { font-size: 13px; color: var(--c-text-2); margin-top: -4px; }
+  .search { margin-top: 12px; height: 40px; border-radius: 20px; background: var(--c-surface); display: flex; align-items: center; gap: 8px; padding: 0 14px; color: var(--c-text-3); font-size: 15px; }
+  .search .ico { width: 18px; height: 18px; }
+  .period { margin: -2px 12px 12px; padding: 12px 14px; border-radius: var(--r-card); background: var(--c-surface); display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; align-items: center; box-shadow: 0 1px 0 var(--c-border-subtle); }
+  .period .t { font-size: 15px; font-weight: var(--fw-bold); }
+  .period .s { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+  .coupons { display: flex; gap: 10px; margin: 0 12px 12px; overflow-x: auto; scrollbar-width: none; }
+  .cp { flex: none; display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 12px 0 0; border-radius: 10px; background: var(--c-price-soft); min-width: 210px; }
+  .cp .v { width: 64px; height: 100%; border-right: 1px dashed rgba(225, 42, 36, .35); display: flex; align-items: baseline; justify-content: center; padding-top: 18px; color: var(--c-price); font-weight: 700; font-size: 22px; }
+  .cp .v small { font-size: 13px; }
+  .cp .v.txt { font-size: 15px; padding-top: 21px; }
+  .cp .n { flex: 1; min-width: 0; }
+  .cp .n b { font-size: 14px; display: block; }
+  .cp .n span { font-size: 12px; color: var(--c-text-2); }
+  .cp .get { height: 28px; padding: 0 12px; border-radius: 14px; background: var(--c-price); color: #fff; font-size: 13px; font-weight: 600; border: 0; position: relative; }
+  .cp .get::after { content: ""; position: absolute; inset: -8px -4px; }
+  .cp .get.done { background: none; color: var(--c-price); box-shadow: inset 0 0 0 1px var(--c-price); }
+  .cats { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; padding: 6px 12px 10px; overflow-x: auto; scrollbar-width: none; background: var(--c-bg-page); }
+  .cats button { flex: none; height: 44px; padding: 0 2px; border: 0; background: none; display: grid; place-items: center; }
+  .cats span { height: 32px; padding: 0 14px; border-radius: 16px; display: grid; place-items: center; font-size: 14px; color: var(--c-text-2); background: var(--c-surface); }
+  .cats .on span { background: var(--c-primary); color: #fff; font-weight: 600; }
+  .goods { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; }
+  .g { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; padding: 12px; border-radius: var(--r-card); background: var(--c-surface); color: var(--c-text); position: relative; }
+  .g .art { border-radius: 10px; }
+  .g .tg { position: absolute; left: 12px; top: 12px; height: 22px; padding: 0 8px; border-radius: 10px 0 10px 0; background: var(--c-price); color: #fff; font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+  .g .tg.new { background: var(--c-primary); }
+  .g .nm { font-size: 16px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .g .sp { font-size: 13px; color: var(--c-text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .g .sold { margin-top: 6px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--c-text-3); }
+  .g .sold .bar { width: 56px; height: 4px; border-radius: 2px; background: var(--c-bg-sunken); overflow: hidden; }
+  .g .sold .bar i { display: block; height: 100%; background: var(--c-primary); }
+  .g .sold.hot { color: var(--c-mark); font-weight: 600; }
+  .g .sold.hot .bar i { background: var(--c-mark); }
+  .g .bt { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 8px; }
+  .g .bt .price { font-size: 20px; }
+  .g .bt .lim { font-size: 12px; color: var(--c-text-3); }
+  .g.out { opacity: .55; }
+  .g .ft { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<div class="app" data-tab="index" data-nonav>
+  <main class="page" id="pg">
+    <div class="hd">
+      <a class="pt-sel" href="#" id="ptSel"></a>
+      <div class="pt-sub" id="ptSub"></div>
+      <div class="search" id="search"></div>
+    </div>
+    <div class="period" id="period"></div>
+    <div class="coupons" id="coupons"></div>
+    <div class="cats" id="cats"></div>
+    <div class="goods" id="goods"></div>
+    <div class="demo-tip">示例数据，商品图为示意</div>
+  </main>
+</div>
+<script src="mp.js"></script>
+<script>
+  const { GOODS, CATS, money, art, esc } = GB;
+  const L = GB.leader(1);
+  document.getElementById('ptSel').innerHTML = `${ico('pin')}<b>${esc(L.point)}</b>${ico('chev-down', 'chev')}`;
+  document.getElementById('ptSub').textContent = `团长 ${L.leader} · 距你 180m`;
+  document.getElementById('search').innerHTML = ico('search') + '搜草莓、鸡蛋、牛奶';
+  document.getElementById('period').innerHTML = `<span class="t">今天下单，明天到小区自提</span><span>${GB.cutoffHtml('距截单')}</span><span class="s">${GB.pickup(L.point)}</span>`;
+  const cps = [['<small>¥</small>1', '新人 1 元购', '西红柿 1kg，首单可用', 'txt'], ['<small>¥</small>5', '满 39 减 5', '领取后 7 天有效'], ['<small>¥</small>8', '满 59 减 8', '11/30 前有效']];
+  document.getElementById('coupons').innerHTML = cps.map(([v, n, s], i) => `<div class="cp"><span class="v">${v}</span><span class="n"><b>${n}</b><span>${s}</span></span><button class="get" data-i="${i}">${i ? '领取' : '去用'}</button></div>`).join('');
+  document.getElementById('coupons').onclick = (e) => { const b = e.target.closest('.get'); if (!b) return; if (b.dataset.i === '0') { location.href = 'goods.html?id=1010'; return; } b.textContent = '已领'; b.classList.add('done'); mtoast('领取成功，下单时自动使用'); };
+
+  let cat = '全部';
+  const catsEl = document.getElementById('cats');
+  catsEl.innerHTML = CATS.map((c) => `<button data-c="${c}" class="${c === cat ? 'on' : ''}"><span>${c}</span></button>`).join('');
+  catsEl.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; cat = b.dataset.c; catsEl.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); draw(); };
+  function draw() {
+    const list = GOODS.filter((g) => !g.off && (cat === '全部' || g.cat === cat));
+    document.getElementById('goods').innerHTML = list.map((g) => {
+      const left = g.stock - g.sold, hot = left / g.stock <= 0.1, n = Cart.qty(g.id);
+      return `<div class="g${left <= 0 ? ' out' : ''}"><a href="goods.html?id=${g.id}" style="position:relative;display:block">${art(g.art, 112, 10)}${g.tag ? `<span class="tg${g.tag.includes('新人') ? ' new' : ''}" style="left:0;top:0">${g.tag}</span>` : ''}</a>
+        <div class="ft"><a href="goods.html?id=${g.id}" style="color:inherit"><div class="nm">${esc(g.name)}</div><div class="sp">${esc(g.spec)}</div>
+          <div class="sold${hot ? ' hot' : ''}"><span class="bar"><i style="width:${(g.sold / g.stock) * 100}%"></i></span>${hot ? `仅剩 ${left} 份` : `已团 ${g.sold} 份`}</div></a>
+          <div class="bt"><div>${money(g.price)} <span class="orig">¥${g.orig}</span>${g.limit ? `<div class="lim">每人限 ${g.limit} 份</div>` : ''}</div><span class="js-step" data-id="${g.id}">${stepperHtml(g.id, n, g.limit)}</span></div></div></div>`;
+    }).join('') || '<div class="demo-tip" style="padding:40px 0">这个分类本期没有团品，明天再来看看</div>';
+  }
+  draw();
+  document.getElementById('goods').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-d]'); if (!b) return;
+    const box = b.closest('.js-step'), id = +box.dataset.id, g = GB.goods(id);
+    const n = Cart.add(id, +b.dataset.d);
+    box.innerHTML = stepperHtml(id, n, g.limit);
+    if (g.limit && n >= g.limit && +b.dataset.d > 0) mtoast(`每人限购 ${g.limit} 份`);
+  });
+  document.getElementById('ptSel').onclick = (e) => {
+    e.preventDefault();
+    const s = sheet(`<h3>选择提货点</h3>${GB.LEADERS.filter((l) => l.status === 'ok').map((l, i) => `<button class="row-line" style="width:100%;border:0;background:none;text-align:left;padding:10px 4px;min-height:60px" data-i="${l.id}">${ico('pin')}<span style="flex:1;min-width:0"><b style="display:block">${esc(l.point)}</b><span class="muted" style="font-size:13px">${esc(l.addr)}</span></span><span class="muted num" style="font-size:13px">${['180m', '1.2km', '2.4km', '3.1km'][i]}</span></button>`).join('')}<p class="muted" style="font-size:12px;margin-top:8px">只显示 5 公里内正在开团的提货点</p>`);
+    s.onclick = (ev) => { const r = ev.target.closest('[data-i]'); if (r) { closeSheet(); mtoast('已切换提货点'); } };
+  };
+</script>
+</body>
+</html>

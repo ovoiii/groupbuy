@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>确认订单 · 邻里鲜小程序</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="mp.css">
+<style>
+  .ptc { margin: 12px; padding: 16px 14px; border-radius: var(--r-card); background: var(--c-surface); }
+  .ptc .tt { font-size: 12px; color: var(--c-text-3); }
+  .ptc h2 { font-size: 18px; margin: 4px 0 2px; display: flex; align-items: center; gap: 6px; }
+  .ptc h2 .ico { color: var(--c-primary); }
+  .ptc .addr { font-size: 13px; color: var(--c-text-2); }
+  .ptc .who { display: flex; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--c-border-subtle); font-size: 14px; }
+  .ptc .who span { color: var(--c-text-3); }
+  .thumbs { display: flex; gap: 8px; padding: 12px 14px; align-items: center; }
+  .thumbs .art { border-radius: 8px; }
+  .thumbs .n { margin-left: auto; font-size: 13px; color: var(--c-text-3); display: inline-flex; align-items: center; }
+  .mcard .row-line .v.red { color: var(--c-price); font-weight: 600; }
+  textarea { width: 100%; border: 0; resize: none; font-size: 16px; padding: 12px 14px; background: none; outline: none; height: 64px; }
+  .ok { text-align: center; padding: 6px 0 4px; }
+  .ok .ic { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 50%; background: var(--c-primary); color: #fff; display: grid; place-items: center; }
+  .ok .ic .ico { width: 34px; height: 34px; stroke-width: 2.6; }
+  .ok h3 { margin-bottom: 6px !important; }
+  .ok p { color: var(--c-text-2); font-size: 14px; margin-bottom: 14px; }
+  .ok .btns { display: flex; gap: 10px; margin-top: 18px; }
+  .ok .btns .mbtn { flex: 1; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<div class="app" data-title="确认订单" data-back="cart.html">
+  <main class="page" id="pg"></main>
+  <div class="actbar" id="bar"></div>
+</div>
+<script src="mp.js"></script>
+<script>
+  const { money, art, esc, yuan } = GB;
+  const L = GB.leader(1);
+  const c = Cart.get(); const ids = Object.keys(c).map(Number);
+  const sum = ids.reduce((s, id) => s + GB.goods(id).price * c[id], 0), n = ids.reduce((s, id) => s + c[id], 0);
+  const cp = sum >= 59 ? 8 : sum >= 39 ? 5 : 0;
+  document.getElementById('pg').innerHTML = `
+    <div class="ptc"><div class="tt">到这里自提</div><h2>${ico('pin')}${esc(L.point)}</h2><div class="addr">${esc(L.addr)}</div>
+      <div style="margin-top:10px">${GB.pickup('')}</div>
+      <div class="who"><span>提货人</span>张女士<span style="margin-left:6px">手机</span><span style="color:var(--c-text)" class="num">138****1029</span></div></div>
+    <div class="mcard"><div class="thumbs">${ids.slice(0, 4).map((id) => art(GB.goods(id).art, 56, 8)).join('')}<span class="n">共 ${n} 件${ico('chev-right', 'ico-sm')}</span></div>
+      <div class="row-line"><span class="k">商品金额</span><span class="v num">${yuan(sum)}</span></div>
+      <div class="row-line" id="cpRow"><span class="k">优惠券</span><span class="v ${cp ? 'red' : 'muted'}">${cp ? `${cp === 8 ? '满 59 减 8' : '满 39 减 5'}　−¥${cp}` : '暂无可用'}${ico('chev-right')}</span></div>
+      <div class="row-line"><span class="k">配送</span><span class="v">到店自提，免运费</span></div></div>
+    <div class="mcard"><textarea placeholder="给团长留言（选填），如：晚上 8 点后来取" maxlength="60"></textarea></div>
+    <div class="demo-tip">截单前可以在「订单」里取消，钱原路退回<br>示例数据</div>`;
+  document.getElementById('bar').innerHTML = `<div class="sum">实付 ${money(sum - cp)}<small>${cp ? `已优惠 ¥${cp}` : ''}</small></div><button class="mbtn cta" id="pay" style="width:150px">${ico('wallet')}微信支付</button>`;
+  document.getElementById('cpRow').onclick = () => {
+    const s = sheet(`<h3>选择优惠券</h3>${[[8, '满 59 减 8', 59], [5, '满 39 减 5', 39], [0, '不使用优惠券', 0]].map(([v, nm, th]) => `<button class="row-line" style="width:100%;border:0;background:none;text-align:left;padding:0 4px;min-height:56px" ${sum < th ? 'disabled style="opacity:.45;width:100%;border:0;background:none;padding:0 4px;min-height:56px"' : ''}><span style="flex:1"><b>${nm}</b>${sum < th ? `<span class="muted" style="font-size:12px;display:block">还差 ¥${(th - sum).toFixed(2)}</span>` : ''}</span><span class="ck${v === cp ? ' on' : ''}">${ico('check')}</span></button>`).join('')}<p class="muted" style="font-size:12px;margin-top:6px">已自动选好最划算的一张</p>`);
+    s.onclick = (e) => { if (e.target.closest('.row-line:not([disabled])')) closeSheet(); };
+  };
+  document.getElementById('pay').onclick = () => {
+    const s = sheet(`<div class="ok"><div class="ic">${ico('check')}</div><h3>支付成功</h3><p>实付 ${yuan(sum - cp)}</p>${GB.pickup(L.point)}
+      <p style="margin-top:12px">到货后会发微信通知，凭提货码到提货点取货</p><div class="btns"><a class="mbtn line" href="index.html">继续逛</a><a class="mbtn pri" href="order.html">看提货码</a></div></div>`);
+    Cart.set({});
+  };
+</script>
+</body>
+</html>

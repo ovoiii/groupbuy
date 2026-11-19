@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商品库 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+<style>
+  .spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 22px; vertical-align: middle; margin-left: 8px; }
+  .spark i { width: 5px; border-radius: 1px; background: var(--c-primary-soft-2); }
+  .spark i:last-child { background: var(--c-primary); }
+  .upl { display: flex; gap: 10px; }
+  .upl .art, .upl .add { width: 88px; height: 88px; border-radius: 8px; }
+  .upl .add { border: 1px dashed var(--c-border); display: grid; place-items: center; color: var(--c-text-3); font-size: var(--fs-xs); text-align: center; }
+  .drawer .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>window.__PAGE__ = { key: '/gb/goods', title: '商品库' };</script>
+
+<div id="page-body">
+  <div class="page-head">
+    <div><h1>商品库</h1><p>所有能上团的商品。上到某一期时再定团购价和库存。</p></div>
+    <div class="actions"><button class="btn" id="btnImp"></button><button class="btn primary" id="btnNew"></button></div>
+  </div>
+  <section class="card">
+    <div class="toolbar">
+      <div class="search"></div>
+      <select class="select" id="cat"></select>
+      <div class="seg" data-seg="st"><button class="on" data-v="">全部 <span class="n">14</span></button><button data-v="on">可上团 <span class="n">13</span></button><button data-v="off">已下架 <span class="n">1</span></button></div>
+      <span class="grow"></span>
+    </div>
+    <div class="bulkbar" id="bulk"><span>已选 <b id="selN">0</b> 个</span><button class="btn primary" id="toNext"></button><button class="btn">批量下架</button><span class="grow"></span><button class="link muted" id="clearSel">取消选择</button></div>
+    <div class="tbl-wrap"><table class="tbl" id="tbl"></table></div>
+    <div class="pager"><span class="total">共 <b id="total"></b> 个商品</span><button class="pg" disabled>‹</button><button class="pg on">1</button><button class="pg" disabled>›</button></div>
+  </section>
+  <p class="foot-note">本原型所有数字均为示例数据。</p>
+</div>
+
+<script src="shell.js"></script>
+<script>
+  const { GOODS, CATS, yuan, art, esc } = GB;
+  document.querySelector('.toolbar .search').innerHTML = ico('search') + '<input class="input" id="q" placeholder="搜商品名 / 供应商">';
+  document.getElementById('btnImp').innerHTML = ico('upload') + '批量导入';
+  document.getElementById('btnNew').innerHTML = ico('plus') + '新增商品';
+  document.getElementById('toNext').innerHTML = ico('plus') + '加入 11月18日团';
+  document.getElementById('cat').innerHTML = CATS.map((c) => `<option value="${c === '全部' ? '' : c}">${c === '全部' ? '全部类目' : c}</option>`).join('');
+  const seven = (g) => [0.7, 0.85, 0.6, 0.95, 0.8, 1, g.sold / g.stock].map((r, i) => Math.max(3, Math.round(r * 22)));
+  let st = '', sel = new Set();
+  function draw() {
+    const q = document.getElementById('q').value.trim(), cat = document.getElementById('cat').value;
+    const rows = GOODS.filter((g) => (!q || (g.name + g.supplier).includes(q)) && (!cat || g.cat === cat) && (!st || (st === 'off') === !!g.off));
+    document.getElementById('total').textContent = rows.length;
+    document.getElementById('tbl').innerHTML = `<thead><tr><th class="chk"><input type="checkbox" id="all" aria-label="全选"></th><th>商品</th><th>类目</th><th>供应商 / 产地</th><th class="num-r">采购价</th><th class="num-r">建议团购价</th><th class="num-r">毛利率</th><th class="num-r">近 7 期销量</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows.map((g) => {
+      const m = (g.price - g.cost) / g.price;
+      return `<tr data-id="${g.id}" class="${sel.has(g.id) ? 'checked' : ''}"><td class="chk"><input type="checkbox" ${sel.has(g.id) ? 'checked' : ''} ${g.off ? 'disabled' : ''} aria-label="选择"></td>
+      <td><div class="goods-cell">${art(g.art, 44)}<div style="min-width:0"><div class="nm">${esc(g.name)}</div><div class="sub">${esc(g.spec)} · 编码 ${g.id}</div></div></div></td>
+      <td>${g.cat}</td><td><div class="cell-2"><span>${esc(g.supplier)}</span><span class="sub">${esc(g.origin || '—')}</span></div></td>
+      <td class="num-r">${yuan(g.cost)}</td><td class="num-r">${yuan(g.price)}<span class="sub"><s>${yuan(g.orig)}</s></span></td>
+      <td class="num-r"><span class="margin${m < 0.25 ? ' low' : ''}">${(m * 100).toFixed(1)}%</span></td>
+      <td class="num-r">${g.off ? '—' : `${(g.sold * 6.4) | 0}<span class="spark" aria-hidden="true">${seven(g).map((h) => `<i style="height:${h}px"></i>`).join('')}</span>`}</td>
+      <td>${g.off ? '<span class="tag bad">已下架</span>' : '<span class="tag ok">可上团</span>'}</td>
+      <td><div class="acts"><button class="link" data-edit>编辑</button>${g.off ? '<button class="link muted">换货源</button>' : '<button class="link muted" data-next>加入下期团</button>'}</div></td></tr>`;
+    }).join('') || `<tr><td colspan="10"><div class="empty">${ico('search')}<b>没找到「${esc(q)}」</b><span>换个关键词，或者 <button class="link" onclick="document.getElementById('q').value='';draw()">清空筛选</button></span></div></td></tr>`}</tbody>`;
+    bulk();
+  }
+  function bulk() { document.getElementById('selN').textContent = sel.size; document.getElementById('bulk').classList.toggle('on', sel.size > 0); }
+  draw();
+  document.getElementById('q').oninput = draw; document.getElementById('cat').onchange = draw;
+  bindSeg(document, (k, v) => { st = v; draw(); });
+  document.getElementById('clearSel').onclick = () => { sel.clear(); draw(); };
+  document.getElementById('toNext').onclick = () => { toast(`${sel.size} 个商品已加入 11月18日团草稿`); sel.clear(); draw(); };
+  document.getElementById('tbl').addEventListener('change', (e) => {
+    if (e.target.id === 'all') { document.querySelectorAll('#tbl tbody tr').forEach((tr) => { const g = GB.goods(+tr.dataset.id); if (!g.off) e.target.checked ? sel.add(g.id) : sel.delete(g.id); }); draw(); return; }
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return; const id = +tr.dataset.id; e.target.checked ? sel.add(id) : sel.delete(id); tr.classList.toggle('checked', e.target.checked); bulk();
+  });
+  document.getElementById('tbl').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return; const g = GB.goods(+tr.dataset.id);
+    if (e.target.closest('[data-next]')) toast(`「${g.name}」已加入 11月18日团草稿`);
+    if (e.target.closest('[data-edit]')) edit(g);
+  });
+  document.getElementById('btnNew').onclick = () => edit(null);
+  document.getElementById('btnImp').onclick = () => toast('原型：下载 Excel 模板 → 填好上传');
+  function edit(g) {
+    const v = (k, d = '') => (g ? esc(g[k]) : d);
+    openDrawer(g ? '编辑商品' : '新增商品', `
+      <div class="field" style="margin-bottom:16px"><label>商品图</label><div class="upl">${g ? art(g.art, 88) : ''}<span class="add">${ico('plus')}<br>上传<br>建议 800×800</span></div><span class="hint">第一张是列表封面，最多 6 张；详情长图另传</span></div>
+      <div class="form-grid">
+        <div class="field span-3" style="grid-column:1/-1"><label><span class="req">*</span>商品名称</label><input class="input" value="${v('name')}" placeholder="如：丹东 99 草莓"></div>
+        <div class="field"><label><span class="req">*</span>规格</label><input class="input" value="${v('spec')}" placeholder="如：500g / 盒"></div>
+        <div class="field"><label><span class="req">*</span>类目</label><select class="select">${CATS.slice(1).map((c) => `<option ${g && g.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        <div class="field"><label><span class="req">*</span>采购价</label><div class="input-unit"><input class="input num" value="${v('cost')}"><span>元</span></div></div>
+        <div class="field"><label><span class="req">*</span>建议团购价</label><div class="input-unit"><input class="input num" value="${v('price')}"><span>元</span></div><span class="hint">上团时可以改</span></div>
+        <div class="field"><label>参考价（划线价）</label><div class="input-unit"><input class="input num" value="${v('orig')}"><span>元</span></div><span class="hint">需与附近超市实际售价一致，不能虚标</span></div>
+        <div class="field"><label>供应商</label><input class="input" value="${v('supplier')}"></div>
+        <div class="field"><label>产地</label><input class="input" value="${v('origin')}"></div>
+        <div class="field"><label>储存方式</label><select class="select"><option>常温</option><option ${g && ['乳品烘焙', '肉禽蛋', '水产'].includes(g.cat) ? 'selected' : ''}>冷藏 0–4℃</option><option>冷冻</option></select><span class="hint">冷藏冷冻商品，团长需有冰柜</span></div>
+      </div>`, `<button class="btn" data-close-drawer>取消</button><button class="btn primary" onclick="closeDrawer();toast('已保存')">保存</button>`, 600);
+  }
+</script>
+</body>
+</html>

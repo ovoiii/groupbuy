@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>团长工作台 · 邻里鲜小程序</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="mp.css">
+<style>
+  .app { --bar-bg: var(--c-sider); --bar-fg: #fff; }
+  .top { background: var(--c-sider); color: #fff; padding: 4px 16px 20px; }
+  .top .pt { display: flex; align-items: center; gap: 6px; font-size: 13px; opacity: .8; }
+  .top .pt .ico { width: 16px; height: 16px; }
+  .top h2 { font-size: 15px; font-weight: 600; margin-top: 14px; opacity: .85; }
+  .big { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; }
+  .big b { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .big span { font-size: 15px; opacity: .8; }
+  .prog { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .15); margin-top: 12px; overflow: hidden; }
+  .prog i { display: block; height: 100%; background: var(--c-mark-bright); border-radius: 3px; }
+  .top .sub { display: flex; justify-content: space-between; font-size: 12px; opacity: .75; margin-top: 6px; }
+  .scan { margin: 14px 12px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .scan a { height: 76px; border-radius: var(--r-card); display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 17px; font-weight: 700; }
+  .scan a .ico { width: 28px; height: 28px; }
+  .scan .a1 { background: var(--c-primary); color: #fff; }
+  .scan .a2 { background: var(--c-surface); color: var(--c-text); }
+  .recv { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: 14px; }
+  .recv .ic { width: 40px; height: 40px; border-radius: 10px; background: var(--c-primary-soft); color: var(--c-primary); display: grid; place-items: center; }
+  .recv b { font-size: 15px; display: block; }
+  .recv span { font-size: 13px; color: var(--c-text-2); }
+  .recv .short { grid-column: 2 / -1; font-size: 13px; color: var(--c-price); background: var(--c-price-soft); border-radius: 8px; padding: 8px 10px; margin-top: -2px; }
+  .srch { display: flex; align-items: center; gap: 8px; margin: 12px 14px 4px; height: 40px; border-radius: 20px; background: var(--c-bg-page); padding: 0 14px; color: var(--c-text-3); }
+  .srch input { flex: 1; border: 0; background: none; outline: none; font-size: 16px; min-width: 0; }
+  .po { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; }
+  .po + .po { border-top: 1px solid var(--c-border-subtle); }
+  .po .tail { width: 52px; height: 44px; border-radius: 8px; background: var(--c-bg-page); display: grid; place-items: center; font: 700 17px var(--font-num); }
+  .po b { font-size: 15px; display: block; }
+  .po span { font-size: 13px; color: var(--c-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .po .late { color: var(--c-mark); font-weight: 600; }
+  .po.done { opacity: .5; }
+  .presale { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; padding: 14px 0; }
+  .presale b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .presale span { font-size: 12px; color: var(--c-text-3); }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<div class="app" data-title="团长工作台" data-back="mine.html?leader=1">
+  <main class="page" id="pg"></main>
+</div>
+<script src="mp.js"></script>
+<script>
+  const { esc } = GB;
+  const L = GB.leader(1);
+  const PO = [
+    ['1029', '张女士', '散养土鸡蛋 ×1、鲜牛奶 ×2', 0], ['5518', '王女士', '丹东 99 草莓 ×1、烟台苹果 ×1', 0], ['0476', '冯先生', '散养土鸡蛋 ×2', 0],
+    ['3302', '刘先生', '五常大米 ×1', 0], ['7720', '蒋先生', '五常大米 ×1 · 11月15日团', 2], ['6604', '吴女士', '冰鲜鲈鱼 ×1、香菇 ×2', 1],
+  ];
+  document.getElementById('pg').innerHTML = `
+    <div class="top"><div class="pt">${ico('pin')}${esc(L.point)} · 团长 ${esc(L.leader)}</div>
+      <h2>11月16日团 · 今天 16:00 起提货</h2>
+      <div class="big"><b>46</b><span>/ 531 单已取</span></div>
+      <div class="prog"><i style="width:${(46 / 531) * 100}%"></i></div>
+      <div class="sub"><span>还有 485 单待取</span><span>明天 21:00 提货截止</span></div></div>
+    <div class="scan"><a class="a1" href="verify.html">${ico('scan')}扫码核销</a><a class="a2" href="verify.html?manual=1">${ico('edit')}输入提货码</a></div>
+    <div class="mcard"><div class="recv"><span class="ic">${ico('truck')}</span><div><b>今天的货已签收</b><span>12:46 签收 28 箱，1,290 件</span></div><a class="mbtn sm line" href="#" onclick="mtoast('打开签收单');return false">签收单</a>
+      <div class="short">${ico('alert', 'ico-sm')} 黑猪五花肉少 1 盒，已登记，平台会给买家退款</div></div></div>
+    <div class="mcard"><div class="mcard-hd"><h2>待提货</h2><span class="more">按手机尾号找</span></div>
+      <label class="srch">${ico('search', 'ico-sm')}<input id="q" inputmode="numeric" maxlength="4" placeholder="手机尾号 4 位"></label>
+      <div id="list"></div></div>
+    <div class="mcard"><div class="mcard-hd"><h2>本期预售 · 11月17日团</h2><span class="more">${GB.cutoffHtml('截单')}</span></div>
+      <div class="presale"><div><b>412</b><span>本点订单</span></div><div><b>1,038</b><span>商品件数</span></div><div><b class="num">¥16,960</b><span>销售额</span></div></div></div>
+    <div class="demo-tip">示例数据</div>`;
+  function draw() {
+    const q = document.getElementById('q').value;
+    const rows = PO.filter((p) => !q || p[0].includes(q));
+    document.getElementById('list').innerHTML = rows.map(([t, n, it, late], i) => `<div class="po" data-i="${i}"><span class="tail">${t}</span><div style="min-width:0"><b>${n}${late === 2 ? ' <span class="late" style="display:inline;font-size:12px">超 24 小时未取</span>' : ''}</b><span>${it}</span></div>
+      ${late === 1 ? '<span class="muted" style="font-size:13px">售后中</span>' : `<button class="mbtn sm ${late === 2 ? 'line' : 'pri'}" data-act="${late === 2 ? 'remind' : 'give'}">${late === 2 ? '提醒' : '交货'}</button>`}</div>`).join('') || '<div class="demo-tip" style="padding:24px">没有尾号是这 4 位的待提货订单</div>';
+  }
+  draw();
+  document.getElementById('q').oninput = draw;
+  document.getElementById('list').onclick = (e) => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const row = b.closest('.po');
+    if (b.dataset.act === 'remind') { mtoast('已给顾客发取货提醒'); b.disabled = true; b.textContent = '已提醒'; return; }
+    location.href = 'verify.html?code=472915';
+  };
+</script>
+</body>
+</html>

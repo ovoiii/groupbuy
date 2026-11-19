@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>准备 11月18日团 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+<style>
+  .sec-title { display: flex; align-items: center; gap: 10px; }
+  .sec-title .n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--c-primary-soft); color: var(--c-primary-active); font-size: 12px; font-weight: 700; }
+  .sum-bar { position: sticky; bottom: 0; z-index: 10; display: flex; align-items: center; gap: 24px; padding: 12px var(--page-px); margin: 16px calc(-1 * var(--page-px)) -32px; background: var(--c-surface); border-top: 1px solid var(--c-border-subtle); font-size: var(--fs-sm); color: var(--c-text-2); flex-wrap: wrap; }
+  .sum-bar b { color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .sum-bar .grow { flex: 1; }
+  .pick-list { display: flex; flex-direction: column; gap: 2px; }
+  .pick-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 8px; border-radius: var(--r-ctl); cursor: pointer; }
+  .pick-item:hover { background: var(--c-bg-page); }
+  .pick-item.in { opacity: .55; cursor: default; }
+  .tbl td .input-unit { width: 112px; }
+  .tbl td .input-unit.sm { width: 84px; }
+  .rm { color: var(--c-text-3); }
+  .rm:hover { color: var(--c-danger); }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>window.__PAGE__ = { key: '/gb/period', title: '准备 11月18日团' };</script>
+
+<div id="page-body">
+  <div class="page-head">
+    <div><h1>准备 11月18日团</h1><p>保存后到开团时间（11/17 23:00）自动在小程序上架，开团前随时可以改。</p></div>
+    <div class="actions"><a class="btn ghost" href="period.html">返回团期列表</a></div>
+  </div>
+
+  <section class="card" style="margin-bottom:var(--card-gap)">
+    <div class="card-hd"><h2 class="sec-title"><span class="n">1</span>时间与范围</h2></div>
+    <div class="card-bd">
+      <div class="form-grid">
+        <div class="field"><label><span class="req">*</span>开团时间</label><input class="input num" value="2026-11-17 23:00"><span class="hint">一般接在上一期截单之后</span></div>
+        <div class="field"><label><span class="req">*</span>截单时间</label><input class="input num" value="2026-11-18 23:00"><span class="hint">截单后不能再下单，开始汇总分拣</span></div>
+        <div class="field"><label><span class="req">*</span>提货时间</label><input class="input num" value="2026-11-19 16:00"><span class="hint">居民在小程序看到的「明天 16:00 起可提」</span></div>
+        <div class="field span-3"><label>开团的提货点</label>
+          <div class="radio-cards" id="scope"><span class="radio-card on" data-v="all">全部合作中的提货点（4 个）</span><span class="radio-card" data-v="pick">指定提货点</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-hd"><h2 class="sec-title"><span class="n">2</span>团品</h2>
+      <span style="font-size:var(--fs-xs);color:var(--c-text-3)">毛利低于 25% 标红；库存按供应商当天能送的量填</span>
+      <span style="margin-left:auto;display:flex;gap:8px"><button class="btn" id="copyLast"></button><button class="btn primary" id="addGoods"></button></span></div>
+    <div class="tbl-wrap"><table class="tbl" id="items"></table></div>
+  </section>
+
+  <div class="sum-bar" id="sum"></div>
+</div>
+
+<script src="shell.js"></script>
+<script>
+  const { GOODS, money, yuan, art, esc } = GB;
+  document.getElementById('copyLast').innerHTML = ico('refresh') + '照搬上一期';
+  document.getElementById('addGoods').innerHTML = ico('plus') + '从商品库添加';
+  document.getElementById('scope').onclick = (e) => { const c = e.target.closest('.radio-card'); if (!c) return; document.querySelectorAll('#scope .radio-card').forEach((x) => x.classList.toggle('on', x === c)); if (c.dataset.v === 'pick') toast('原型：会弹出提货点多选列表'); };
+
+  // 本期团品草稿：从上一期带过来 10 个，换掉了吐司
+  let items = [1002, 1001, 1006, 1003, 1004, 1005, 1007, 1008, 1010, 1011, 1012].map((id) => { const g = GB.goods(id); return { id, price: g.price, stock: g.id === 1006 || g.id === 1001 ? g.stock + 100 : g.stock, limit: g.limit }; });
+  items[0].price = 25.8; // 鸡蛋降价引流
+
+  function draw() {
+    document.getElementById('items').innerHTML = `<thead><tr><th>商品</th><th>团购价</th><th class="num-r">毛利</th><th>本期库存</th><th>每人限购</th><th class="num-r">上期已售</th><th></th></tr></thead><tbody>${items.map((it, i) => {
+      const g = GB.goods(it.id), m = (it.price - g.cost) / it.price;
+      return `<tr data-i="${i}"><td><div class="goods-cell">${art(g.art, 40)}<div style="min-width:0"><div class="nm">${esc(g.name)}</div><div class="sub">${esc(g.spec)} · 采购 ${yuan(g.cost)}</div></div></div></td>
+        <td><div class="input-unit"><input class="input num" data-k="price" value="${it.price}" inputmode="decimal" aria-label="团购价"><span>元</span></div></td>
+        <td class="num-r"><span class="margin${m < 0.25 ? ' low' : ''}" data-m>${Math.round(m * 100)}%</span><span class="sub">参考价 ${yuan(g.orig)}</span></td>
+        <td><div class="input-unit"><input class="input num" data-k="stock" value="${it.stock}" inputmode="numeric" aria-label="本期库存"><span>件</span></div></td>
+        <td><div class="input-unit sm"><input class="input num" data-k="limit" value="${it.limit || ''}" placeholder="不限" inputmode="numeric" aria-label="每人限购"><span>件</span></div></td>
+        <td class="num-r">${g.sold}${g.sold / g.stock >= 0.9 ? `<span class="sub" style="color:var(--c-mark)">上期快卖完</span>` : ''}</td>
+        <td><button class="icon-btn rm" data-rm title="移出本期">${ico('trash')}</button></td></tr>`;
+    }).join('')}</tbody>`;
+    sum();
+  }
+  function sum() {
+    const low = items.filter((it) => (it.price - GB.goods(it.id).cost) / it.price < 0.25).length;
+    const cap = items.reduce((s, it) => s + it.price * it.stock, 0);
+    document.getElementById('sum').innerHTML = `<span>团品 <b>${items.length}</b> 个</span><span>全部卖完销售额 <b>${yuan(cap)}</b></span>${low ? `<span class="margin low">${low} 个毛利低于 25%</span>` : ''}<span class="grow"></span>
+      <button class="btn" onclick="toast('草稿已保存')">保存草稿</button><button class="btn primary" onclick="toast('已发布，11/17 23:00 自动开团');setTimeout(()=>location.href='period.html',900)">发布，到点自动开团</button>`;
+  }
+  draw();
+  const tbl = document.getElementById('items');
+  tbl.addEventListener('input', (e) => {
+    const inp = e.target.closest('[data-k]'); if (!inp) return;
+    const tr = inp.closest('tr'), it = items[+tr.dataset.i];
+    it[inp.dataset.k] = +inp.value || 0;
+    if (inp.dataset.k === 'price') { const g = GB.goods(it.id), m = (it.price - g.cost) / it.price, el = tr.querySelector('[data-m]'); el.textContent = Math.round(m * 100) + '%'; el.classList.toggle('low', m < 0.25); }
+    sum();
+  });
+  tbl.addEventListener('click', (e) => { if (!e.target.closest('[data-rm]')) return; const i = +e.target.closest('tr').dataset.i; const g = GB.goods(items[i].id); items.splice(i, 1); draw(); toast(`已移出「${g.name}」`); });
+  document.getElementById('copyLast').onclick = () => toast('已有团品，照搬会覆盖当前列表（原型未执行）');
+
+  document.getElementById('addGoods').onclick = () => {
+    const inSet = new Set(items.map((x) => x.id));
+    const d = openDrawer('从商品库添加', `<div class="toolbar" style="padding:0 0 12px;border:0"><div class="search" style="width:100%">${ico('search')}<input class="input" placeholder="搜商品名" id="q"></div></div>
+      <div class="pick-list">${GOODS.map((g) => `<label class="pick-item${inSet.has(g.id) ? ' in' : ''}"><input type="checkbox" value="${g.id}" ${inSet.has(g.id) ? 'checked disabled' : ''} ${g.off ? 'disabled' : ''}>
+        <div class="goods-cell">${art(g.art, 36)}<div style="min-width:0"><div class="nm">${esc(g.name)}</div><div class="sub">${esc(g.spec)} · ${g.off ? '已下架，供应商停产' : '建议价 ' + yuan(g.price)}</div></div></div>
+        <span class="tag">${inSet.has(g.id) ? '已在本期' : g.cat}</span></label>`).join('')}</div>`,
+      `<button class="btn" data-close-drawer>取消</button><button class="btn primary" id="okAdd">加入本期</button>`, 520);
+    d.querySelector('#q').oninput = (e) => d.querySelectorAll('.pick-item').forEach((r) => (r.style.display = r.textContent.includes(e.target.value) ? '' : 'none'));
+    d.querySelector('#okAdd').onclick = () => {
+      const ids = [...d.querySelectorAll('input:checked:not(:disabled)')].map((x) => +x.value);
+      ids.forEach((id) => { const g = GB.goods(id); items.push({ id, price: g.price, stock: g.stock, limit: 0 }); });
+      closeDrawer(); draw(); if (ids.length) toast(`已加入 ${ids.length} 个团品`);
+    };
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>订单管理 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+<style>
+  .thumbs { display: flex; align-items: center; gap: 4px; }
+  .thumbs .more { font-size: var(--fs-xs); color: var(--c-text-3); margin-left: 4px; white-space: nowrap; }
+  .od-items { border: 1px solid var(--c-border-subtle); border-radius: var(--r-card); }
+  .od-item { display: grid; grid-template-columns: minmax(0, 1fr) 64px 96px; gap: 12px; align-items: center; padding: 12px 14px; }
+  .od-item + .od-item { border-top: 1px solid var(--c-border-subtle); }
+  .od-sum { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 12px 14px; border-top: 1px solid var(--c-border-subtle); background: var(--c-bg-page); font-size: var(--fs-sm); color: var(--c-text-2); border-radius: 0 0 var(--r-card) var(--r-card); }
+  .od-sum b { color: var(--c-text); text-align: right; font-variant-numeric: tabular-nums; }
+  .od-sec { margin-bottom: 24px; }
+  .od-sec h3 { font-size: var(--fs-base); margin-bottom: 12px; }
+  .code-box { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-card); background: var(--c-primary-soft); }
+  .code-box .code { font: 700 22px/1 var(--font-num); letter-spacing: .18em; color: var(--c-primary-active); }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>window.__PAGE__ = { key: '/gb/orders', title: '订单管理' };</script>
+
+<div id="page-body">
+  <div class="page-head">
+    <div><h1>订单管理</h1><p>居民在小程序下的所有订单。截单前居民可以自己取消，截单后只能走售后。</p></div>
+    <div class="actions"><button class="btn" id="btnExp"></button></div>
+  </div>
+  <section class="card">
+    <div class="toolbar" style="border-bottom:0;padding-bottom:0"><div class="seg" data-seg="st" id="seg"></div></div>
+    <div class="toolbar">
+      <div class="search" id="sbox"></div>
+      <select class="select" id="period"><option value="">全部团期</option><option>11月17日团</option><option>11月16日团</option><option>11月15日团</option></select>
+      <select class="select" id="point"></select>
+      <span class="grow"></span>
+      <span style="font-size:var(--fs-xs);color:var(--c-text-3)">实付 = 商品金额 − 优惠，不含已退款</span>
+    </div>
+    <div class="tbl-wrap"><table class="tbl" id="tbl"></table></div>
+    <div class="pager"><span class="total">共 <b id="total"></b> 单</span><button class="pg" disabled>‹</button><button class="pg on">1</button><button class="pg" disabled>›</button></div>
+  </section>
+  <p class="foot-note">本原型所有数字均为示例数据；手机号已脱敏，后台导出时同样脱敏。</p>
+</div>
+
+<script src="shell.js"></script>
+<script>
+  const { ORDERS, STATUS, LEADERS, yuan, money, art, esc } = GB;
+  document.getElementById('btnExp').innerHTML = ico('download') + '导出当前筛选';
+  document.getElementById('btnExp').onclick = () => toast('已导出 Excel（原型）');
+  document.getElementById('sbox').innerHTML = ico('search') + '<input class="input" id="q" placeholder="订单号 / 手机号后 4 位 / 提货码">';
+  document.getElementById('point').innerHTML = '<option value="">全部提货点</option>' + LEADERS.filter((l) => l.status === 'ok').map((l) => `<option value="${l.id}">${esc(l.point)}</option>`).join('');
+  const order = ['', 'unpaid', 'paid', 'arrived', 'done', 'refund', 'closed'];
+  let st = '';
+  const cnt = (s) => ORDERS.filter((o) => !s || o.status === s).length;
+  document.getElementById('seg').innerHTML = order.map((s) => `<button data-v="${s}" class="${s === st ? 'on' : ''}">${s ? STATUS[s][0] : '全部'} <span class="n${s === 'refund' ? ' hot' : ''}">${cnt(s)}</span></button>`).join('');
+  const periodOf = (o) => (String(o.no).slice(4, 6) | 0) + '';
+  function draw() {
+    const q = document.getElementById('q').value.trim(), pt = +document.getElementById('point').value, pd = document.getElementById('period').value;
+    const rows = ORDERS.filter((o) => (!st || o.status === st) && (!pt || o.leader === pt) && (!pd || pd.startsWith('11月' + periodOf(o))) && (!q || String(o.no).includes(q) || o.phone.endsWith(q) || o.code === q));
+    document.getElementById('total').textContent = rows.length;
+    document.getElementById('tbl').innerHTML = `<thead><tr><th>订单</th><th>买家</th><th>商品</th><th>提货点</th><th class="num-r">实付</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows.map((o) => {
+      const n = o.items.reduce((s, [, k]) => s + k, 0), L = GB.leader(o.leader);
+      return `<tr data-no="${o.no}"><td><div class="cell-2"><b class="num">${o.no}</b><span class="sub">${o.time} 下单 · 11月${periodOf(o)}日团</span></div></td>
+        <td><div class="cell-2"><span>${esc(o.buyer)}${o.newbie ? ' <span class="tag pri">新人</span>' : ''}</span><span class="sub num">${o.phone}</span></div></td>
+        <td><div class="thumbs">${o.items.slice(0, 3).map(([id]) => art(GB.goods(id).art, 32)).join('')}<span class="more">${o.items.length > 1 ? `${GB.goods(o.items[0][0]).name} 等 ${n} 件` : `${GB.goods(o.items[0][0]).name} × ${n}`}</span></div></td>
+        <td><div class="cell-2"><span>${esc(L.point)}</span><span class="sub">团长 ${esc(L.leader)}</span></div></td>
+        <td class="num-r"><b>${yuan(o.pay)}</b>${o.discount ? `<span class="sub">${esc(o.coupon)} −${o.discount}</span>` : ''}</td>
+        <td><span class="tag ${STATUS[o.status][1]}">${STATUS[o.status][0]}</span>${o.status === 'refund' ? `<div class="sub" style="font-size:var(--fs-xs);color:var(--c-text-3);margin-top:2px">${esc(o.refund.type)}</div>` : ''}</td>
+        <td><div class="acts"><button class="link" data-detail>详情</button>${o.status === 'refund' ? '<a class="link" href="aftersale.html">去审核</a>' : o.status === 'arrived' ? '<button class="link muted" data-remind>提醒取货</button>' : ''}</div></td></tr>`;
+    }).join('') || `<tr><td colspan="7"><div class="empty">${ico('inbox')}<b>没有符合条件的订单</b><span>试试切到「全部」或清空搜索</span></div></td></tr>`}</tbody>`;
+  }
+  draw();
+  ['q', 'point', 'period'].forEach((id) => document.getElementById(id).addEventListener(id === 'q' ? 'input' : 'change', draw));
+  bindSeg(document, (k, v) => { st = v; draw(); });
+  document.getElementById('tbl').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-no]'); if (!tr) return;
+    const o = ORDERS.find((x) => x.no === +tr.dataset.no);
+    if (e.target.closest('[data-remind]')) toast(`已给 ${o.buyer} 发送取货提醒（小程序订阅消息）`);
+    if (e.target.closest('[data-detail]')) detail(o);
+  });
+  function detail(o) {
+    const L = GB.leader(o.leader), S = STATUS[o.status];
+    const steps = [['下单', o.time], ['截单', '11/' + periodOf(o) + ' 23:00'], ['到提货点', '11/' + (+periodOf(o) + 1) + ' 16:00'], ['提货', o.status === 'done' ? '已提货' : '—']];
+    const reached = { unpaid: 0, paid: 1, shipping: 2, arrived: 3, done: 4, refund: 3, closed: 0 }[o.status];
+    openDrawer(`订单 ${o.no}`, `
+      <div class="od-sec"><span class="tag ${S[1]}">${S[0]}</span> ${o.status === 'closed' ? `<span style="color:var(--c-text-3);font-size:var(--fs-sm);margin-left:8px">${o.closeReason}</span>` : ''}
+        <div class="steps" style="margin-top:16px">${steps.map(([n, t], i) => `<div class="step ${i < reached ? 'done' : i === reached && o.status !== 'closed' ? 'now' : ''}"><b>${n}</b><span class="t">${t}</span></div>`).join('')}</div></div>
+      <div class="od-sec"><h3>提货</h3>
+        <div class="code-box">${ico('qr', 'ico-lg')}<div><div style="font-size:var(--fs-xs);color:var(--c-text-2)">提货码（团长核销用）</div><div class="code">${o.code.slice(0, 2)}••••</div></div><span style="margin-left:auto">${GB.pickup(L.point)}</span></div>
+        <dl class="dl" style="margin-top:14px"><dt>提货点</dt><dd>${esc(L.point)}<br><span style="color:var(--c-text-3);font-size:var(--fs-sm)">${esc(L.addr)}</span></dd><dt>团长</dt><dd>${esc(L.leader)} · <span class="num">${L.phone}</span></dd><dt>买家</dt><dd>${esc(o.buyer)} · <span class="num">${o.phone}</span></dd></dl></div>
+      <div class="od-sec"><h3>商品</h3><div class="od-items">${o.items.map(([id, n]) => { const g = GB.goods(id); return `<div class="od-item"><div class="goods-cell">${art(g.art, 40)}<div style="min-width:0"><div class="nm">${esc(g.name)}</div><div class="sub">${esc(g.spec)}</div></div></div><span class="num" style="color:var(--c-text-2)">× ${n}</span><span class="num-r">${yuan(g.price * n)}</span></div>`; }).join('')}
+        <div class="od-sum"><span>商品金额</span><b>${yuan(o.amount)}</b>${o.discount ? `<span>${esc(o.coupon)}</span><b style="color:var(--c-price)">−${yuan(o.discount)}</b>` : ''}<span>实付（微信支付）</span><b style="font-size:var(--fs-md)">${yuan(o.pay)}</b></div></div></div>`,
+      o.status === 'paid' ? `<button class="btn danger" onclick="closeDrawer();toast('已取消并原路退款')">取消订单并退款</button><button class="btn" data-close-drawer>关闭</button>`
+        : o.status === 'arrived' ? `<button class="btn" onclick="toast('已发送取货提醒')">提醒取货</button><button class="btn primary" onclick="closeDrawer();toast('已代团长核销')">代团长核销</button>`
+          : `<button class="btn" data-close-drawer>关闭</button>`, 560);
+  }
+</script>
+</body>
+</html>

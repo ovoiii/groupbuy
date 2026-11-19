@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>我的订单 · 邻里鲜小程序</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="mp.css">
+<style>
+  .tabs { flex: none; display: flex; background: var(--c-surface); border-bottom: 1px solid var(--c-border-subtle); }
+  .tabs button { flex: 1; height: 44px; border: 0; background: none; font-size: 15px; color: var(--c-text-2); position: relative; }
+  .tabs button.on { color: var(--c-text); font-weight: 700; }
+  .tabs button.on::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 20px; height: 3px; margin-left: -10px; border-radius: 2px; background: var(--c-primary); }
+  .tabs .n { position: absolute; top: 6px; right: 6px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--c-price); color: #fff; font-size: 12px; line-height: 16px; padding: 0 4px; font-weight: 700; }
+  .oc { margin: 12px 12px 0; background: var(--c-surface); border-radius: var(--r-card); }
+  .oc-hd { display: flex; align-items: center; padding: 12px 14px 0; font-size: 13px; color: var(--c-text-3); }
+  .oc-hd .st { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--c-text-2); }
+  .oc-hd .st.go { color: var(--c-primary); }
+  .oc-hd .st.warn { color: var(--c-mark); }
+  .oc-hd .st.bad { color: var(--c-price); }
+  .oc-bd { display: flex; gap: 8px; padding: 12px 14px; align-items: center; color: var(--c-text); }
+  .oc-bd .art { border-radius: 8px; }
+  .oc-bd .one { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; }
+  .oc-bd .r { margin-left: auto; text-align: right; font-size: 13px; color: var(--c-text-3); white-space: nowrap; }
+  .oc-bd .r b { display: block; color: var(--c-text); font-size: 16px; font-variant-numeric: tabular-nums; }
+  .oc-mk { padding: 0 14px; }
+  .oc-ft { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 14px 14px; }
+  .oc-note { font-size: 13px; color: var(--c-text-3); padding: 0 14px; margin-top: -4px; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<div class="app" data-title="我的订单" data-tab="orders">
+  <div class="tabs" id="tabs"></div>
+  <main class="page" id="pg"></main>
+</div>
+<script src="mp.js"></script>
+<script>
+  const { art, esc, yuan } = GB;
+  // 当前用户（张女士）的订单：示例
+  const MY = [
+    { no: 25111702317, st: 'paid', items: [[1001, 2], [1003, 2]], pay: 61.8, time: '今天 14:41', period: '11月17日团' },
+    { no: 25111601930, st: 'arrived', items: [[1002, 1], [1004, 2]], pay: 52.6, time: '昨天 20:12', period: '11月16日团' },
+    { no: 25111702290, st: 'unpaid', items: [[1006, 1]], pay: 19.9, time: '今天 14:30', period: '11月17日团' },
+    { no: 25111501877, st: 'done', items: [[1005, 1], [1011, 1], [1012, 1]], pay: 40.6, time: '11/15 19:02', period: '11月15日团' },
+    { no: 25111400512, st: 'refund', items: [[1007, 1]], pay: 22.8, time: '11/14 12:20', period: '11月14日团', rf: '退款成功 ¥22.80' },
+  ];
+  const T = [['', '全部'], ['unpaid', '待付款'], ['paid', '待截单'], ['arrived', '待提货'], ['refund', '售后']];
+  let t = new URLSearchParams(location.search).get('t') || '';
+  function draw() {
+    document.getElementById('tabs').innerHTML = T.map(([k, n]) => `<button data-t="${k}" class="${k === t ? 'on' : ''}">${n}${k === 'arrived' ? '<span class="n">1</span>' : ''}</button>`).join('');
+    const list = MY.filter((o) => !t || o.st === t);
+    document.getElementById('pg').innerHTML = list.map((o) => {
+      const n = o.items.reduce((s, [, k]) => s + k, 0);
+      const st = { unpaid: ['待付款，15 分钟后自动取消', 'warn'], paid: ['已付款 · 等待截单', 'go'], arrived: ['已到货 · 待提货', 'go'], done: ['已提货', ''], refund: [o.rf, 'bad'] }[o.st];
+      return `<div class="oc"><div class="oc-hd">${o.period} · ${o.time}<span class="st ${st[1]}">${st[0]}</span></div>
+        <a class="oc-bd" href="order.html?no=${o.no}">${o.items.length === 1 ? `${art(GB.goods(o.items[0][0]).art, 64, 8)}<span class="one">${esc(GB.goods(o.items[0][0]).name)}</span>` : o.items.slice(0, 3).map(([id]) => art(GB.goods(id).art, 64, 8)).join('')}<span class="r"><b>${yuan(o.pay)}</b>共 ${n} 件</span></a>
+        ${o.st === 'paid' ? `<div class="oc-mk">${GB.pickup('')}</div>` : o.st === 'arrived' ? `<div class="oc-mk">${GB.pickup('幸福里 3 号楼便利店').replace('明天 16:00', '今天 16:00')}</div>` : ''}
+        <div class="oc-ft">${o.st === 'unpaid' ? '<button class="mbtn sm line" data-cancel>取消订单</button><button class="mbtn sm cta" onclick="location.href=\'checkout.html\'">去支付</button>'
+          : o.st === 'paid' ? '<button class="mbtn sm line" data-cancel>取消订单</button><a class="mbtn sm line" href="order.html">查看</a>'
+          : o.st === 'arrived' ? '<a class="mbtn sm pri" href="order.html?code=1">出示提货码</a>'
+          : o.st === 'done' ? '<button class="mbtn sm line" onclick="location.href=\'aftersale.html\'">申请售后</button><button class="mbtn sm line" data-again>再买一次</button>'
+          : '<a class="mbtn sm line" href="order.html">查看详情</a>'}</div></div>`;
+    }).join('') + (list.length ? '<div class="demo-tip" style="padding-top:16px">示例数据</div>' : `<div class="demo-tip" style="padding:80px 30px">没有这类订单</div>`);
+  }
+  draw();
+  document.getElementById('tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { t = b.dataset.t; draw(); } };
+  document.getElementById('pg').addEventListener('click', (e) => {
+    if (e.target.closest('[data-cancel]')) { if (confirm('取消这个订单？钱会原路退回微信。')) mtoast('已取消，退款 1–3 天到账'); }
+    if (e.target.closest('[data-again]')) { mtoast('已加入购物车'); }
+  });
+</script>
+</body>
+</html>

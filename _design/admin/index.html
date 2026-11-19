@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工作台 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+<style>
+  .period-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 32px; align-items: center; padding: 18px var(--card-padding) 20px; }
+  .period-card h1 { font-size: var(--fs-lg); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .period-card .steps { grid-column: 1 / -1; }
+  .period-card .acts-r { display: flex; gap: 8px; }
+  .todo-list { list-style: none; margin: 0; padding: 4px 0; }
+  .todo-list li a { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px var(--card-padding); color: var(--c-text); transition: background var(--dur-fast); }
+  .todo-list li a:hover { background: var(--c-bg-page); }
+  .todo-list .ic { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; background: var(--c-bg-sunken); color: var(--c-text-2); }
+  .todo-list .ic.warn { background: var(--c-mark-soft); color: var(--c-mark); }
+  .todo-list .ic.bad { background: var(--c-danger-soft); color: var(--c-danger); }
+  .todo-list .ic.pri { background: var(--c-primary-soft); color: var(--c-primary); }
+  .todo-list b { font-weight: var(--fw-semi); display: block; }
+  .todo-list small { color: var(--c-text-3); font-size: var(--fs-xs); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .todo-list .go { color: var(--c-text-3); display: flex; align-items: center; gap: 4px; font-size: var(--fs-sm); }
+  .chart { padding: 8px var(--card-padding) 16px; }
+  .chart svg { width: 100%; height: 240px; display: block; }
+  .chart text { font: 12px var(--font); fill: var(--c-text-3); }
+  .chart .lbl { fill: var(--c-text-2); font-weight: 600; }
+  .legend { display: flex; gap: 16px; font-size: var(--fs-xs); color: var(--c-text-2); margin-left: auto; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .rank { counter-reset: r; }
+  .rank td:first-child::before { counter-increment: r; content: counter(r); display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 4px; background: var(--c-bg-sunken); color: var(--c-text-2); font-size: 12px; font-weight: 700; margin-right: 10px; }
+  .rank tr:nth-child(-n+3) td:first-child::before { background: var(--c-primary-soft); color: var(--c-primary-active); }
+  .rank td:first-child { display: flex; align-items: center; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>window.__PAGE__ = { key: '/dashboard', title: '工作台' };</script>
+
+<div id="page-body">
+  <section class="card period-card" style="margin-bottom:var(--card-gap)">
+    <div>
+      <h1>本期团 · 11月17日团 <span class="tag pri">进行中</span></h1>
+      <p style="color:var(--c-text-2);margin-top:6px;font-size:var(--fs-sm)">今晚 23:00 截单，明早 7:00 开始分拣，明天 16:00 起居民到提货点自提。</p>
+    </div>
+    <div class="acts-r">
+      <a class="btn" href="period.html">查看团品</a>
+      <a class="btn primary" href="period-edit.html" id="newPeriod"></a>
+    </div>
+    <div class="steps">
+      <div class="step done"><b>开团</b><span class="t">11/16 23:00</span></div>
+      <div class="step now"><b>截单</b><span class="t">11/17 23:00 · 还剩 <span class="js-cutoff num"></span></span></div>
+      <div class="step"><b>分拣配送</b><span class="t">11/18 07:00 – 14:00</span></div>
+      <div class="step"><b>到点自提</b><span class="t">11/18 16:00 – 11/19 21:00</span></div>
+    </div>
+  </section>
+
+  <div class="kpis" id="kpis" style="margin-bottom:var(--card-gap)"></div>
+
+  <div class="grid-2">
+    <div class="stack">
+      <section class="card">
+        <div class="card-hd"><h2>近 7 期销售额</h2><span style="font-size:var(--fs-xs);color:var(--c-text-3)">单位：万元，本期截至 14:47</span>
+          <div class="legend"><span><i style="background:var(--c-primary)"></i>销售额</span><span><i style="background:var(--c-mark)"></i>本期（进行中）</span></div></div>
+        <div class="chart" id="chart"></div>
+      </section>
+      <section class="card">
+        <div class="card-hd"><h2>本期团品销售</h2><span style="font-size:var(--fs-xs);color:var(--c-text-3)">售罄率 = 已售 ÷ 本期库存</span><a class="more" href="period.html">全部团品</a></div>
+        <div class="tbl-wrap"><table class="tbl rank" id="rank"></table></div>
+      </section>
+    </div>
+    <div class="stack">
+      <section class="card">
+        <div class="card-hd"><h2>待处理</h2><span class="tag warn" id="todoN"></span></div>
+        <ul class="todo-list" id="todo"></ul>
+      </section>
+      <section class="card">
+        <div class="card-hd"><h2>提货点本期排行</h2><a class="more" href="leaders.html">团长管理</a></div>
+        <div class="tbl-wrap"><table class="tbl" id="points"></table></div>
+      </section>
+    </div>
+  </div>
+  <p class="foot-note">本原型所有数字均为示例数据。</p>
+</div>
+
+<script src="shell.js"></script>
+<script>
+  const { GOODS, LEADERS, money, yuan, art, esc } = GB;
+  document.getElementById('newPeriod').innerHTML = ico('plus') + '准备 11月18日团';
+
+  const live = GOODS.filter((g) => !g.off);
+  const gmv = live.reduce((s, g) => s + g.price * g.sold, 0);
+  const orders = 1286, buyers = 1104;
+  document.getElementById('kpis').innerHTML = [
+    ['本期销售额', 'chart', yuan(gmv).replace('.', '<small style="font-size:.55em">.') + '</small>', `<span class="up">↑ 12.4%</span> 较上期同一时刻`, '口径：本期已支付订单的商品金额合计，未扣优惠券、未扣退款'],
+    ['本期订单', 'list', orders.toLocaleString(), `下单人数 <b class="num">${buyers.toLocaleString()}</b>`, '口径：已支付订单数，不含待付款和已关闭'],
+    ['客单价', 'wallet', yuan(gmv / orders), `<span class="down">↓ 2.1%</span> 较上期`, '口径：本期销售额 ÷ 本期订单'],
+    ['开团提货点', 'pin', '4<small style="font-size:.55em;color:var(--c-text-3)"> / 6</small>', '1 个待审核，1 个已暂停', '口径：本期可下单的提货点数 / 全部提货点'],
+  ].map(([k, i, v, d, tip]) => `<div class="kpi" title="${tip}"><span class="k">${ico(i)}${k}${ico('info', 'ico-sm')}</span><span class="v num">${v}</span><span class="d">${d}</span></div>`).join('');
+
+  // 近 7 期柱状图（示例数据）
+  const series = [['11/11', 61200], ['11/12', 64850], ['11/13', 58730], ['11/14', 70120], ['11/15', 73460], ['11/16', 68910], ['11/17', Math.round(gmv)]];
+  const W = 640, H = 240, pad = { l: 44, r: 8, t: 24, b: 28 }, max = 80000;
+  const bw = (W - pad.l - pad.r) / series.length;
+  const y = (v) => pad.t + (H - pad.t - pad.b) * (1 - v / max);
+  let svg = '';
+  for (let v = 0; v <= max; v += 20000) svg += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--c-border-subtle)"/><text x="${pad.l - 8}" y="${y(v) + 4}" text-anchor="end">${v / 10000 ? v / 10000 + '万' : 0}</text>`;
+  series.forEach(([d, v], i) => {
+    const x = pad.l + i * bw + bw * 0.26, w = bw * 0.48, last = i === series.length - 1;
+    svg += `<rect x="${x}" y="${y(v)}" width="${w}" height="${y(0) - y(v)}" rx="4" fill="${last ? 'var(--c-mark)' : 'var(--c-primary)'}" opacity="${last ? 1 : 0.85}"><title>${d}团 ${yuan(v)}</title></rect>
+      <text x="${x + w / 2}" y="${y(v) - 6}" text-anchor="middle" class="lbl">${(v / 10000).toFixed(2)}</text>
+      <text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${d}${last ? ' 本期' : ''}</text>`;
+  });
+  document.getElementById('chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="近 7 期销售额">${svg}</svg>`;
+
+  // 团品排行
+  const topG = [...live].sort((a, b) => b.price * b.sold - a.price * a.sold).slice(0, 6);
+  document.getElementById('rank').innerHTML = `<thead><tr><th>团品</th><th class="num-r">已售 / 库存</th><th class="num-r">销售额</th></tr></thead><tbody>${topG.map((g) => {
+    const r = g.sold / g.stock, hot = r >= 0.9;
+    return `<tr><td><div class="goods-cell">${art(g.art, 36)}<div style="min-width:0"><div class="nm">${esc(g.name)}</div><div class="sub">${esc(g.spec)}</div></div></div></td>
+      <td class="num-r">${g.sold} / ${g.stock}<span class="bar-mini${hot ? ' hot' : ''}"><i style="width:${r * 100}%"></i></span>${hot ? `<span class="sub" style="color:var(--c-mark)">售罄率 ${Math.round(r * 100)}%，可补库存</span>` : `<span class="sub">售罄率 ${Math.round(r * 100)}%</span>`}</td>
+      <td class="num-r"><b>${yuan(g.price * g.sold)}</b></td></tr>`;
+  }).join('')}</tbody>`;
+
+  // 待处理
+  const todo = [
+    ['bad', 'refund', '2 个售后待审核', '鲈鱼质量问题、五花肉少件，需 24 小时内处理', 'aftersale.html', '去审核'],
+    ['warn', 'flame', '2 个团品快卖完', '赣南脐橙剩 9 箱、丹东草莓剩 14 盒，截单前可能售罄', 'period.html', '补库存'],
+    ['pri', 'truck', '11月16日团 2 个提货点未签收', '翠竹苑配送中，和平里待装车，16:00 开始自提', 'sorting.html', '看配送'],
+    ['pri', 'user-check', '1 个团长入驻申请', '刘洋 · 望京 SOHO 快递柜旁，11/16 提交', 'leaders.html', '去审核'],
+    ['', 'package', '1 个商品已下架', '手撕吐司供应商停产，下期团需替换', 'goods.html', '去看看'],
+  ];
+  document.getElementById('todoN').textContent = todo.length + ' 项';
+  document.getElementById('todo').innerHTML = todo.map(([c, i, t, s, h, go]) => `<li><a href="${h}"><span class="ic ${c}">${ico(i)}</span><span style="min-width:0"><b>${t}</b><small>${s}</small></span><span class="go">${go}${ico('chev-right', 'ico-sm')}</span></a></li>`).join('');
+
+  // 提货点
+  const pts = LEADERS.filter((l) => l.status === 'ok').sort((a, b) => b.gmv - a.gmv);
+  document.getElementById('points').innerHTML = `<thead><tr><th>提货点</th><th class="num-r">订单</th><th class="num-r">销售额</th></tr></thead><tbody>${pts.map((l) => `<tr><td><div class="cell-2"><b>${esc(l.point)}</b><span class="sub">团长 ${esc(l.leader)} · 覆盖 ${l.households.toLocaleString()} 户</span></div></td><td class="num-r">${l.orders}</td><td class="num-r">${yuan(l.gmv)}</td></tr>`).join('')}</tbody>`;
+</script>
+</body>
+</html>

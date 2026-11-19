@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>购物车 · 邻里鲜小程序</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="mp.css">
+<style>
+  .pt { margin: 12px 12px 10px; padding: 12px 14px; border-radius: var(--r-card); background: var(--c-surface); display: flex; flex-direction: column; gap: 8px; }
+  .pt .l1 { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .pt .l1 .ico { color: var(--c-primary); width: 18px; height: 18px; }
+  .pt .l1 a { margin-left: auto; font-size: 13px; color: var(--c-text-3); font-weight: 400; display: inline-flex; align-items: center; min-height: 44px; }
+  .pt .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .item { display: grid; grid-template-columns: 22px 80px minmax(0, 1fr); gap: 10px; align-items: center; padding: 12px 14px; }
+  .item + .item { border-top: 1px solid var(--c-border-subtle); }
+  .item .art { border-radius: 8px; }
+  .item .nm { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .sp { font-size: 12px; color: var(--c-text-3); }
+  .item .bt { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+  .item .bt .price { font-size: 17px; }
+  .item .warn { font-size: 12px; color: var(--c-mark); margin-top: 2px; }
+  .cps { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 14px; border-top: 1px solid var(--c-border-subtle); }
+  .cps .ico { color: var(--c-price); }
+  .cps b { color: var(--c-price); margin-left: auto; }
+  .empty { text-align: center; padding: 70px 30px 30px; }
+  .empty .bx { width: 96px; height: 96px; margin: 0 auto 18px; border-radius: 30px; background: var(--c-primary-soft); color: var(--c-primary); display: grid; place-items: center; }
+  .empty .bx .ico { width: 44px; height: 44px; stroke-width: 1.6; }
+  .empty h2 { font-size: 18px; }
+  .empty p { color: var(--c-text-2); margin: 8px 0 20px; }
+  .all { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--c-text-2); min-height: 44px; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<div class="app" data-title="购物车" data-tab="cart">
+  <main class="page" id="pg"></main>
+  <div class="actbar" id="bar" style="padding-bottom:8px"></div>
+</div>
+<script src="mp.js"></script>
+<script>
+  const { money, art, esc } = GB;
+  const L = GB.leader(1);
+  const off = new Set();
+  function calc() {
+    const c = Cart.get(); let sum = 0, n = 0;
+    for (const [id, k] of Object.entries(c)) if (!off.has(+id)) { sum += GB.goods(+id).price * k; n += k; }
+    const cp = sum >= 59 ? 8 : sum >= 39 ? 5 : 0;
+    return { c, sum, n, cp, cpName: cp === 8 ? '满 59 减 8' : '满 39 减 5' };
+  }
+  function draw() {
+    const { c, sum, n, cp, cpName } = calc();
+    const ids = Object.keys(c).map(Number);
+    if (!ids.length) {
+      document.getElementById('pg').innerHTML = `<div class="empty"><div class="bx">${ico('cart')}</div><h2>购物车是空的</h2><p>今晚 23:00 截单，明天 16:00 到小区自提</p><a class="mbtn pri" href="index.html">去挑今日团品</a></div>`;
+      document.getElementById('bar').hidden = true; return;
+    }
+    document.getElementById('bar').hidden = false;
+    document.getElementById('pg').innerHTML = `
+      <div class="pt"><div class="l1">${ico('pin')}${esc(L.point)}<a href="#" id="chg">更换${ico('chev-right', 'ico-sm')}</a></div><div class="row">${GB.pickup('')}${GB.cutoffHtml('截单前可改')}</div></div>
+      <div class="mcard" style="margin-bottom:10px">${ids.map((id) => { const g = GB.goods(id), k = c[id], left = g.stock - g.sold;
+        return `<div class="item"><button class="ck${off.has(id) ? '' : ' on'}" data-ck="${id}" aria-label="选择">${ico('check')}</button><a href="goods.html?id=${id}">${art(g.art, 80, 8)}</a>
+          <div style="min-width:0"><div class="nm">${esc(g.name)}</div><div class="sp">${esc(g.spec)}</div>${left <= 20 ? `<div class="warn">仅剩 ${left} 份，尽快下单</div>` : ''}
+          <div class="bt">${money(g.price)}<span class="js-step" data-id="${id}">${stepperHtml(id, k, g.limit)}</span></div></div></div>`; }).join('')}
+        <div class="cps">${ico('ticket')}<span>${cp ? `已满足「${cpName}」` : `再买 ¥${(39 - sum).toFixed(2)} 可用「满 39 减 5」`}</span>${cp ? `<b>−¥${cp}</b>` : `<a href="index.html" style="margin-left:auto;font-size:13px">去凑单</a>`}</div></div>
+      <div class="demo-tip">示例数据</div>`;
+    document.getElementById('bar').innerHTML = `<label class="all"><button class="ck${off.size ? '' : ' on'}" id="ckAll" aria-label="全选">${ico('check')}</button>全选</label>
+      <div class="sum" style="text-align:right">合计 ${money(sum - cp)}<small>${cp ? `已优惠 ¥${cp} · ` : ''}共 ${n} 件</small></div>
+      <a class="mbtn cta" href="checkout.html" ${n ? '' : 'style="pointer-events:none;opacity:.5"'}>去结算</a>`;
+    document.getElementById('chg').onclick = (e) => { e.preventDefault(); mtoast('首页顶部可以切换提货点'); };
+  }
+  draw();
+  document.querySelector('.app').addEventListener('click', (e) => {
+    const s = e.target.closest('[data-d]');
+    if (s) { const id = +s.closest('.js-step').dataset.id, g = GB.goods(id); if (Cart.qty(id) === 1 && +s.dataset.d < 0 && !confirm(`把「${g.name}」移出购物车？`)) return; Cart.add(id, +s.dataset.d); draw(); return; }
+    const ck = e.target.closest('[data-ck]'); if (ck) { const id = +ck.dataset.ck; off.has(id) ? off.delete(id) : off.add(id); draw(); return; }
+    if (e.target.closest('#ckAll')) { const ids = Object.keys(Cart.get()).map(Number); if (off.size) off.clear(); else ids.forEach((i) => off.add(i)); draw(); }
+  });
+</script>
+</body>
+</html>

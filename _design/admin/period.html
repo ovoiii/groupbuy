@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>每日团期 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+<style>
+  .cur-hd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px var(--card-padding); border-bottom: 1px solid var(--c-border-subtle); }
+  .cur-hd h2 { font-size: var(--fs-md); }
+  .cur-hd .meta { display: flex; gap: 20px; font-size: var(--fs-sm); color: var(--c-text-2); flex-wrap: wrap; }
+  .cur-hd .meta b { color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .cur-hd .grow { flex: 1; }
+  .stock-edit { display: none; align-items: center; gap: 6px; justify-content: flex-end; }
+  tr.editing .stock-edit { display: flex; }
+  tr.editing .stock-view { display: none; }
+  .stock-edit .input { width: 72px; text-align: right; }
+  .sellout { color: var(--c-mark); font-weight: var(--fw-semi); }
+  .off-row td { color: var(--c-text-3); }
+  .timeline { font-size: var(--fs-sm); color: var(--c-text-2); line-height: 1.7; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .timeline b { color: var(--c-text); font-weight: var(--fw-semi); display: inline-block; width: 30px; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>window.__PAGE__ = { key: '/gb/period', title: '每日团期' };</script>
+
+<div id="page-body">
+  <div class="page-head">
+    <div><h1>每日团期</h1><p>每天一期：前一晚 23:00 开团，当晚 23:00 截单，次日 16:00 到提货点自提。到点自动开团、截单，不用手动操作。</p></div>
+    <div class="actions"><a class="btn primary" href="period-edit.html" id="btnNew"></a></div>
+  </div>
+
+  <section class="card" style="margin-bottom:var(--card-gap)">
+    <div class="cur-hd">
+      <h2>11月17日团</h2><span class="tag pri">进行中</span>
+      <div class="meta"><span>团品 <b>13</b> 个在售</span><span>已售 <b id="soldN"></b> 件</span><span>销售额 <b id="gmvN"></b></span></div>
+      <span class="grow"></span>
+      <span id="cut"></span>
+      <span id="pick"></span>
+    </div>
+    <div class="toolbar">
+      <div class="seg" data-seg="f"><button class="on" data-v="">全部 <span class="n">14</span></button><button data-v="hot">快卖完 <span class="n hot">2</span></button><button data-v="limit">限购 <span class="n">3</span></button><button data-v="off">已下架 <span class="n">1</span></button></div>
+      <span class="grow"></span>
+      <button class="btn" id="btnAdd"></button>
+    </div>
+    <div class="tbl-wrap"><table class="tbl" id="goods"></table></div>
+  </section>
+
+  <section class="card">
+    <div class="card-hd"><h2>全部团期</h2><span style="font-size:var(--fs-xs);color:var(--c-text-3)">提货率 = 已提货订单 ÷ 应提货订单，48 小时未提货的订单由团长联系或转售后</span></div>
+    <div class="tbl-wrap"><table class="tbl" id="periods"></table></div>
+  </section>
+  <p class="foot-note">本原型所有数字均为示例数据。</p>
+</div>
+
+<script src="shell.js"></script>
+<script>
+  const { GOODS, money, yuan, art, esc } = GB;
+  document.getElementById('btnNew').innerHTML = ico('plus') + '准备 11月18日团';
+  document.getElementById('btnAdd').innerHTML = ico('plus') + '从商品库加团品';
+  document.getElementById('btnAdd').onclick = () => toast('截单前加的团品会立即在小程序上架');
+  document.getElementById('cut').innerHTML = GB.cutoffHtml('距截单');
+  document.getElementById('pick').innerHTML = GB.pickup('');
+  const live = GOODS.filter((g) => !g.off);
+  document.getElementById('soldN').textContent = live.reduce((s, g) => s + g.sold, 0).toLocaleString();
+  document.getElementById('gmvN').textContent = yuan(live.reduce((s, g) => s + g.sold * g.price, 0));
+
+  let filter = '';
+  function drawGoods() {
+    const rows = GOODS.filter((g) => !filter || (filter === 'hot' ? !g.off && g.sold / g.stock >= 0.9 : filter === 'limit' ? g.limit : g.off));
+    document.getElementById('goods').innerHTML = `<thead><tr><th>团品</th><th class="num-r">团购价</th><th class="num-r">毛利</th><th class="num-r">已售 / 本期库存</th><th class="num-r">每人限购</th><th>供应商</th><th>操作</th></tr></thead><tbody>${rows.map((g) => {
+      const r = g.stock ? g.sold / g.stock : 0, hot = !g.off && r >= 0.9, m = (g.price - g.cost) / g.price;
+      return `<tr data-id="${g.id}" class="${g.off ? 'off-row' : ''}"><td><div class="goods-cell">${art(g.art, 40)}<div style="min-width:0"><div class="nm">${esc(g.name)} ${g.tag ? `<span class="tag ${g.tag.includes('新人') ? 'pri' : 'warn'}" style="margin-left:4px">${g.tag}</span>` : ''}</div><div class="sub">${esc(g.spec)}</div></div></div></td>
+        <td class="num-r">${money(g.price)}<span class="sub"><s>${yuan(g.orig)}</s></span></td>
+        <td class="num-r"><span class="margin${m < 0.25 ? ' low' : ''}">${Math.round(m * 100)}%</span><span class="sub">采购 ${yuan(g.cost)}</span></td>
+        <td class="num-r">${g.off ? '已下架' : `<span class="stock-view">${g.sold} / ${g.stock}<span class="bar-mini${hot ? ' hot' : ''}"><i style="width:${r * 100}%"></i></span>${hot ? `<span class="sub sellout">只剩 ${g.stock - g.sold}，预计 2 小时内售罄</span>` : `<span class="sub">剩 ${g.stock - g.sold}</span>`}</span>
+          <span class="stock-edit">库存 <input class="input num" value="${g.stock + (hot ? 100 : 0)}" aria-label="本期库存"><button class="link" data-save>保存</button><button class="link muted" data-cancel>取消</button></span>`}</td>
+        <td class="num-r">${g.limit ? g.limit + ' 件' : '不限'}</td>
+        <td><div class="cell-2"><span>${esc(g.supplier)}</span><span class="sub">${esc(g.origin || '—')}</span></div></td>
+        <td><div class="acts">${g.off ? `<button class="link" data-act="on">重新上架</button>` : `<button class="link" data-act="stock">改库存</button><button class="link muted" data-act="off">下架</button>`}</div></td></tr>`;
+    }).join('') || `<tr><td colspan="7"><div class="empty">${ico('package')}<b>没有符合条件的团品</b></div></td></tr>`}</tbody>`;
+  }
+  drawGoods();
+  bindSeg(document, (k, v) => { filter = v; drawGoods(); });
+  document.getElementById('goods').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr'); if (!tr) return;
+    const g = GB.goods(+tr.dataset.id);
+    if (e.target.closest('[data-act="stock"]')) tr.classList.add('editing');
+    if (e.target.closest('[data-cancel]')) tr.classList.remove('editing');
+    if (e.target.closest('[data-save]')) { g.stock = +tr.querySelector('.stock-edit input').value || g.stock; drawGoods(); toast(`「${g.name}」本期库存改为 ${g.stock}，小程序立即生效`); }
+    if (e.target.closest('[data-act="off"]')) { if (confirm(`下架「${g.name}」？已下单的订单照常履约，居民将看不到这个团品。`)) { g.off = true; drawGoods(); toast('已下架'); } }
+    if (e.target.closest('[data-act="on"]')) toast('供应商停产，需先在商品库换货源再上架');
+  });
+
+  const P = [
+    ['11月18日团', 'plan', '11/17 23:00', '11/18 23:00', '11/19 16:00', 11, 0, 0, null],
+    ['11月17日团', 'live', '11/16 23:00', '11/17 23:00', '11/18 16:00', 13, 1286, 52940.3, null],
+    ['11月16日团', 'ship', '11/15 23:00', '11/16 23:00', '11/17 16:00', 14, 1652, 68910, null],
+    ['11月15日团', 'pick', '11/14 23:00', '11/15 23:00', '11/16 16:00', 12, 1764, 73460, 0.93],
+    ['11月14日团', 'done', '11/13 23:00', '11/14 23:00', '11/15 16:00', 12, 1690, 70120, 0.99],
+    ['11月13日团', 'done', '11/12 23:00', '11/13 23:00', '11/14 16:00', 11, 1415, 58730, 1],
+  ];
+  const ST = { plan: ['待开团', ''], live: ['进行中', 'pri'], ship: ['分拣配送中', 'warn'], pick: ['自提中', 'ok'], done: ['已结束', ''] };
+  document.getElementById('periods').innerHTML = `<thead><tr><th>团期</th><th>时间</th><th class="num-r">团品</th><th class="num-r">订单</th><th class="num-r">销售额</th><th class="num-r">提货率</th><th>状态</th><th>操作</th></tr></thead><tbody>${P.map(([n, s, a, b, c, g, o, m, pr]) => `<tr>
+    <td><b>${n}</b></td>
+    <td><div class="timeline"><b>开团</b>${a}　<b>截单</b>${b}　<b>提货</b>${c}</div></td>
+    <td class="num-r">${g}</td><td class="num-r">${o ? o.toLocaleString() : '—'}</td><td class="num-r">${m ? yuan(m) : '—'}</td>
+    <td class="num-r">${pr == null ? '—' : `${Math.round(pr * 100)}%${pr < 0.95 ? '<span class="sub">还有 124 单未提</span>' : ''}`}</td>
+    <td><span class="tag ${ST[s][1]}">${ST[s][0]}</span></td>
+    <td><div class="acts">${s === 'plan' ? `<a class="link" href="period-edit.html">编辑团品</a><button class="link muted">提前开团</button>` : s === 'ship' ? `<a class="link" href="sorting.html">看分拣配送</a>` : `<a class="link" href="orders.html">看订单</a><button class="link muted" onclick="toast('已复制为新团期草稿')">复制为新团期</button>`}</div></td></tr>`).join('')}</tbody>`;
+</script>
+</body>
+</html>

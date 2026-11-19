@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>团长管理 · 邻里鲜团购后台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="gb.css">
+<style>
+  .avatar-sm { width: 32px; height: 32px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--c-primary-soft-2); color: var(--c-primary-active); font-weight: 700; font-size: 13px; flex: none; }
+  .who { display: flex; align-items: center; gap: 10px; }
+  .od-sec { margin-bottom: 22px; }
+  .od-sec h3 { font-size: var(--fs-base); margin-bottom: 10px; }
+  .check-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: var(--fs-sm); }
+  .check-list li { display: flex; align-items: center; gap: 8px; }
+  .check-list .ok { color: var(--c-success); }
+  .check-list .warn { color: var(--c-mark); }
+  .map { height: 150px; border-radius: var(--r-card); background: var(--c-bg-sunken); position: relative; overflow: hidden; }
+  .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<script src="../data.js"></script>
+<script>window.__PAGE__ = { key: '/gb/leaders', title: '团长管理' };</script>
+
+<div id="page-body">
+  <div class="page-head">
+    <div><h1>团长管理</h1><p>团长负责收货、保管和把货交给居民。一个团长对应一个提货点。</p></div>
+    <div class="actions"><button class="btn primary" id="btnNew"></button></div>
+  </div>
+  <section class="card">
+    <div class="toolbar"><div class="seg" data-seg="st"><button class="on" data-v="">全部 <span class="n">6</span></button><button data-v="ok">合作中 <span class="n">4</span></button><button data-v="pending">待审核 <span class="n hot">1</span></button><button data-v="paused">已暂停 <span class="n">1</span></button></div>
+      <span class="grow"></span><div class="search" id="sbox"></div></div>
+    <div class="tbl-wrap"><table class="tbl" id="tbl"></table></div>
+  </section>
+  <p class="foot-note">本原型所有数字均为示例数据；团长手机号已脱敏。</p>
+</div>
+
+<script src="shell.js"></script>
+<script>
+  const { LEADERS, yuan, esc } = GB;
+  document.getElementById('btnNew').innerHTML = ico('plus') + '添加团长';
+  document.getElementById('btnNew').onclick = () => toast('团长一般在小程序「我的 → 申请当团长」自己提交，这里用于线下签约后补录');
+  document.getElementById('sbox').innerHTML = ico('search') + '<input class="input" id="q" placeholder="团长 / 提货点">';
+  const ST = { ok: ['合作中', 'ok'], pending: ['待审核', 'warn'], paused: ['已暂停', ''] };
+  let st = '';
+  function draw() {
+    const q = document.getElementById('q').value.trim();
+    const rows = LEADERS.filter((l) => (!st || l.status === st) && (!q || (l.leader + l.point).includes(q)));
+    document.getElementById('tbl').innerHTML = `<thead><tr><th>团长</th><th>提货点</th><th class="num-r">覆盖户数</th><th class="num-r">本期订单</th><th class="num-r">本期销售额</th><th class="num-r">上期提货率</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows.map((l) => `<tr data-id="${l.id}">
+      <td><div class="who"><span class="avatar-sm">${l.leader[0]}</span><div class="cell-2"><b>${esc(l.leader)}</b><span class="sub num">${l.phone}</span></div></div></td>
+      <td><div class="cell-2"><span>${esc(l.point)}</span><span class="sub">${esc(l.addr)}</span></div></td>
+      <td class="num-r">${l.households ? l.households.toLocaleString() : '—'}</td>
+      <td class="num-r">${l.status === 'ok' ? l.orders : '—'}</td><td class="num-r">${l.status === 'ok' ? yuan(l.gmv) : '—'}</td>
+      <td class="num-r">${l.status === 'ok' ? [96, 94, 91, 97][l.id - 1] + '%' : '—'}</td>
+      <td><span class="tag ${ST[l.status][1]}">${ST[l.status][0]}</span>${l.status === 'paused' ? '<div style="font-size:var(--fs-xs);color:var(--c-text-3);margin-top:2px">店面装修，12 月恢复</div>' : ''}</td>
+      <td><div class="acts">${l.status === 'pending' ? '<button class="link" data-audit>审核</button>' : `<button class="link" data-view>查看</button>${l.status === 'ok' ? '<button class="link muted" data-pause>暂停</button>' : '<button class="link muted" data-resume>恢复</button>'}`}</div></td></tr>`).join('') || `<tr><td colspan="8"><div class="empty">${ico('users')}<b>没有符合条件的团长</b></div></td></tr>`}</tbody>`;
+  }
+  draw();
+  document.getElementById('q').oninput = draw;
+  bindSeg(document, (k, v) => { st = v; draw(); });
+  const mapSvg = `<svg viewBox="0 0 400 150" aria-hidden="true"><path d="M0 40h400M0 110h400M120 0v150M290 0v150" stroke="var(--c-surface)" stroke-width="10"/><rect x="140" y="56" width="60" height="38" rx="4" fill="var(--c-primary-soft-2)"/><rect x="210" y="56" width="66" height="38" rx="4" fill="var(--c-primary-soft-2)"/><circle cx="205" cy="75" r="48" fill="var(--c-primary)" opacity=".1" stroke="var(--c-primary)" stroke-dasharray="4 4"/><path d="M205 52c-8 0-13 6-13 12 0 9 13 21 13 21s13-12 13-21c0-6-5-12-13-12Z" fill="var(--c-primary)"/><circle cx="205" cy="64" r="4.5" fill="#fff"/><circle cx="330" cy="30" r="5" fill="var(--c-text-3)"/><text x="340" y="34" font-size="11" fill="var(--c-text-3)">阳光花园驿站 1.8km</text></svg>`;
+  document.getElementById('tbl').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return; const l = GB.leader(+tr.dataset.id);
+    if (e.target.closest('[data-pause]')) { if (confirm(`暂停「${l.point}」？下一期起居民不能再选这个提货点，已下单的照常送达。`)) { l.status = 'paused'; draw(); toast('已暂停，从 11月18日团起生效'); } }
+    if (e.target.closest('[data-resume]')) { l.status = 'ok'; draw(); toast('已恢复，下一期起可以下单'); }
+    if (e.target.closest('[data-view]')) openDrawer(l.point, `<div class="map" style="margin-bottom:16px">${mapSvg}</div><dl class="dl"><dt>团长</dt><dd>${esc(l.leader)} · <span class="num">${l.phone}</span></dd><dt>地址</dt><dd>${esc(l.addr)}</dd><dt>合作开始</dt><dd>${l.since}</dd><dt>覆盖户数</dt><dd>${l.households.toLocaleString()}</dd><dt>营业时间</dt><dd>每天 08:00 – 21:00 可取货</dd><dt>冷藏设备</dt><dd>有冰柜 1 台（可放冷藏商品）</dd></dl>`, `<button class="btn" data-close-drawer>关闭</button>`, 520);
+    if (e.target.closest('[data-audit]')) {
+      const d = openDrawer('团长入驻审核 · ' + l.leader, `
+        <div class="od-sec"><h3>申请信息</h3><dl class="dl"><dt>申请人</dt><dd>${esc(l.leader)} · <span class="num">${l.phone}</span></dd><dt>提货点</dt><dd>${esc(l.point)}</dd><dt>地址</dt><dd>${esc(l.addr)}</dd><dt>场地</dt><dd>写字楼一层快递柜旁空位，自有货架 2 个，无冰柜</dd><dt>能覆盖</dt><dd>望京 SOHO 上班族，申请人估计每天 60–80 单</dd><dt>提交时间</dt><dd>11/16 20:14</dd></dl></div>
+        <div class="od-sec"><h3>位置</h3><div class="map">${mapSvg}</div></div>
+        <div class="od-sec"><h3>自动检查</h3><ul class="check-list">
+          <li class="ok">${ico('check-circle')}手机号已实名</li>
+          <li class="ok">${ico('check-circle')}1.5 公里内没有其他提货点</li>
+          <li class="warn">${ico('alert')}没有冰柜：牛奶、鲈鱼、五花肉等冷藏商品不能选这个提货点</li>
+          <li class="warn">${ico('alert')}写字楼周末不开门，周六日的团需要暂停</li></ul></div>
+        <div class="field"><label>审核意见（发给申请人）</label><textarea class="input" style="height:72px;padding:8px 10px">欢迎加入！请先加运营微信，确认冰柜和周末安排后开通。</textarea></div>`,
+        `<button class="btn danger" onclick="toast('已拒绝，申请人会收到短信')">拒绝</button><button class="btn primary" id="pass">通过，下期开团</button>`, 560);
+      d.querySelector('#pass').onclick = () => { l.status = 'ok'; l.since = '2026-11'; l.households = 0; closeDrawer(); draw(); toast('已通过，11月18日团起居民可以选这个提货点'); };
+    }
+  });
+</script>
+</body>
+</html>

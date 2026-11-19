@@ -1,0 +1,19 @@
+node_modules
+dist
+.cache
+src/manifest.json
+src/pages.json
+src/types/uni-app.d.ts
+
+## ide
+**/.idea
+*.iml
+
+## backend
+**/target
+**/logs
+**/dist
+
+
+## front
+/yarn-error.log
