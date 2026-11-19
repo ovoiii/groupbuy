@@ -25,6 +25,15 @@
       <view class="go">提现<wd-icon name="arrow-right" size="12px" /></view>
     </view>
 
+    <view class="gb-card shr">
+      <view class="ic"><wd-icon name="share" size="20px" color="#078149" /></view>
+      <view style="flex: 1; min-width: 0">
+        <view class="b">分享本期团到小区群</view>
+        <view class="s">邻居点进来自动选你的提货点{{ d.newcomers ? ` · 已带来 ${d.newcomers} 位新邻居` : '' }}</view>
+      </view>
+      <button class="btn sm pri" open-type="share">去分享</button>
+    </view>
+
     <view v-for="b in d.batches" :key="b.delivery.id" class="gb-card">
       <view class="recv">
         <view class="ic"><wd-icon name="bags" size="20px" color="#078149" /></view>
@@ -87,6 +96,13 @@ function search() {
   return new Promise<void>((resolve) => { t = setTimeout(async () => { orders.value = await api('/leader/orders', { keyword: kw.value }); resolve() }, 200) })
 }
 onShow(() => load().catch(() => setTimeout(() => uni.navigateBack(), 1200)))
+// 团长分享：落地到首页，带上自己的提货点
+function shareTitle() {
+  const p = d.value?.point
+  const c = d.value?.presale?.period?.cutoffTime
+  return `${p ? p.name + '团购' : '邻里鲜团购'}开团啦${c ? '，' + dayTime(c) + ' 截单' : ''}，明天到店自提`
+}
+onShareAppMessage(() => ({ title: shareTitle(), path: `/pages/index/index?pt=${d.value?.point?.id || ''}` }))
 onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()))
 const go = (url: string) => uni.navigateTo({ url })
 function scan() {
@@ -131,6 +147,10 @@ async function doSign() {
 .inc .s { font-size: 13px; color: $text-2; }
 .inc .v { color: $mark; font-weight: 700; }
 .inc .go { display: flex; align-items: center; gap: 2px; font-size: 14px; color: $text-3; flex: none; }
+.shr { display: flex; gap: 12px; align-items: center; padding: 14px; }
+.shr .ic { width: 40px; height: 40px; border-radius: 10px; background: $primary-soft; display: flex; align-items: center; justify-content: center; flex: none; }
+.shr .b { font-size: 15px; font-weight: 600; }
+.shr .s { font-size: 13px; color: $text-2; }
 .recv { display: flex; gap: 12px; align-items: center; padding: 14px; }
 .recv .ic { width: 40px; height: 40px; border-radius: 10px; background: $primary-soft; display: flex; align-items: center; justify-content: center; flex: none; }
 .recv .b { font-size: 15px; font-weight: 600; }

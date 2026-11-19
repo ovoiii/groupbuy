@@ -17,6 +17,7 @@
       </view>
     </view>
 
+    <SharedTip :point="shared" @close="shared = null" @switched="onSwitched" />
     <view v-if="period" class="period">
       <view class="l1"><text class="t">今天下单，明天到小区自提</text><Cutoff :time="period.cutoffTime" /></view>
       <view><Pickup :time="period.pickupTime" /></view>
@@ -60,7 +61,8 @@
 </template>
 
 <script lang="ts" setup>
-import { api, post, img, cart, pointStore, token, toLogin, dayTime, toast, syncServerTime } from '@/gb/util'
+import { api, post, img, cart, pointStore, token, toLogin, dayTime, toast, syncServerTime, handleShareEntry, sharePointId, rememberMe } from '@/gb/util'
+import SharedTip from '@/gb/SharedTip.vue'
 import Price from '@/gb/Price.vue'
 import Stepper from '@/gb/Stepper.vue'
 import Pickup from '@/gb/Pickup.vue'
@@ -78,6 +80,7 @@ const kw = ref('')
 const focusSearch = ref(false)
 const loaded = ref(false)
 const qty = ref<Record<string, number>>({})
+const shared = ref<any>(null)
 
 const hot = (g) => g.stock > 0 && g.left > 0 && g.left * 10 <= g.stock
 const maxOf = (g) => (g.limitQty ? Math.min(g.left, g.limitQty - (g.bought || 0)) : g.left)
@@ -94,6 +97,7 @@ async function load() {
   goods.value = h.goods
   coupons.value = h.coupons
   cats.value = ['全部', ...h.categories.filter((c) => h.goods.some((g) => g.category === c))]
+  rememberMe(me)
   point.value = me.defaultPoint || pointStore.get()
   if (point.value) pointStore.set(point.value)
   else uni.navigateTo({ url: '/pages/points/points' })
@@ -105,7 +109,18 @@ async function load() {
   qty.value = c
   loaded.value = true
 }
+onLoad((q: any) => { handleShareEntry(q).then((p) => (shared.value = p)) })
 onShow(() => { load().catch(() => {}); qty.value = cart.get(); cart.badge() })
+function onSwitched(p: any) { shared.value = null; point.value = p; load().catch(() => {}) }
+
+// 分享：链接带上提货点，邻居点进来默认选这个点
+function shareTitle() {
+  const names = goods.value.filter((g) => g.left > 0).slice(0, 3).map((g) => g.name)
+  if (!period.value || !names.length) return '邻里鲜 · 今天下单，明天到小区自提'
+  return `${point.value ? point.value.name + '：' : ''}今日团 ${names.join('、')}${goods.value.length > 3 ? ' 等' + goods.value.length + '款' : ''}`
+}
+onShareAppMessage(() => ({ title: shareTitle(), path: `/pages/index/index?pt=${sharePointId()}`, imageUrl: goods.value[0] ? img(goods.value[0].image) : undefined }))
+onShareTimeline(() => ({ title: shareTitle(), query: `pt=${sharePointId()}` }))
 onPullDownRefresh(() => load().finally(() => uni.stopPullDownRefresh()))
 
 function add(g, d) {

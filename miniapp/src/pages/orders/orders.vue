@@ -28,7 +28,7 @@
   </view>
 </template>
 <script lang="ts" setup>
-import { api, post, img, md, cart, token, toLogin, toast, subscribe } from '@/gb/util'
+import { api, post, img, md, cart, token, toLogin, toast, subscribe, payOrder } from '@/gb/util'
 import Pickup from '@/gb/Pickup.vue'
 const TABS = [['', '全部'], ['unpaid', '待付款'], ['paid', '待截单'], ['arrived', '待提货'], ['refund', '售后']]
 const st = ref('')
@@ -61,8 +61,9 @@ function cancel(o) {
 }
 async function pay(o) {
   await subscribe(['arrived', 'pickup'])
-  await post('/order/pay', { id: o.id })
-  uni.navigateTo({ url: `/pages/order/order?id=${o.id}&paid=1` })
+  const r = await payOrder(o.id)
+  if (r === 'cancel') return load()
+  uni.navigateTo({ url: `/pages/order/order?id=${o.id}&${r}=1` })
 }
 function again(o) {
   // 只能加本期还在卖的同款商品

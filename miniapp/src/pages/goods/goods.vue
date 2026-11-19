@@ -4,6 +4,7 @@
 <!-- 商品详情：价格、已团 / 仅剩、提货时间轴、坏了包退 -->
 <template>
   <view v-if="g">
+    <SharedTip :point="shared" @close="shared = null" @switched="shared = null" />
     <swiper class="hero" :indicator-dots="images.length > 1" indicator-active-color="#078149">
       <swiper-item v-for="u in images" :key="u"><image :src="img(u)" mode="aspectFill" class="hi" /></swiper-item>
     </swiper>
@@ -16,7 +17,10 @@
       </view>
     </view>
     <view class="info">
-      <view class="h1">{{ g.name }}</view>
+      <view class="h1row">
+        <view class="h1">{{ g.name }}</view>
+        <button class="share" open-type="share"><wd-icon name="share" size="18px" color="#078149" /><text>分享</text></button>
+      </view>
       <view class="sp">{{ g.spec }}</view>
       <view class="tags">
         <text v-if="g.tag" class="tag warn">{{ g.tag }}</text>
@@ -58,7 +62,8 @@
   </view>
 </template>
 <script lang="ts" setup>
-import { api, img, cart, pointStore, dayTime, toast, toDate } from '@/gb/util'
+import { api, img, cart, pointStore, dayTime, toast, toDate, token, handleShareEntry, sharePointId } from '@/gb/util'
+import SharedTip from '@/gb/SharedTip.vue'
 import Price from '@/gb/Price.vue'
 import Stepper from '@/gb/Stepper.vue'
 import Cutoff from '@/gb/Cutoff.vue'
@@ -72,11 +77,27 @@ const live = computed(() => g.value?.period?.status === 'live')
 const maxQty = computed(() => (g.value.limitQty ? Math.min(g.value.left, g.value.limitQty - g.value.bought) : g.value.left))
 const canBuy = computed(() => g.value.left > 0 && live.value && maxQty.value > 0)
 const hm = (t) => { const d = toDate(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
-onLoad(async (q: any) => {
-  g.value = await api('/goods', { id: q.id })
-  n.value = cart.qty(q.id)
+const shared = ref<any>(null)
+let gid = ''
+// 从分享进来的新用户要先登录，登录完回到这页时在 onShow 里再加载
+async function load() {
+  if (!gid || !token.get()) return
+  g.value = await api('/goods', { id: gid })
+  n.value = cart.qty(gid)
   count.value = cart.count()
+}
+onLoad((q: any) => {
+  gid = q.id
+  handleShareEntry(q).then((p) => (shared.value = p))
+  load().catch(() => {})
 })
+onShow(() => { if (!g.value) load().catch(() => {}) })
+onShareAppMessage(() => ({
+  title: g.value ? `¥${g.value.price} ${g.value.name}（${g.value.spec}），明天到小区自提` : '邻里鲜社区团购',
+  path: `/pages/goods/goods?id=${gid}&pt=${sharePointId()}`,
+  imageUrl: g.value ? img(images.value[0]) : undefined,
+}))
+onShareTimeline(() => ({ title: g.value ? `¥${g.value.price} ${g.value.name}` : '邻里鲜社区团购', query: `id=${gid}&pt=${sharePointId()}` }))
 function add(d) {
   const before = n.value
   n.value = cart.add(g.value.id, d)
@@ -92,7 +113,10 @@ const goCart = () => uni.switchTab({ url: '/pages/cart/cart' })
 .pricebar .r { margin-left: auto; text-align: right; font-size: 12px; color: $text-2; line-height: 1.6; display: flex; flex-direction: column; align-items: flex-end; }
 .pricebar .b { color: $mark; font-weight: 700; }
 .info { padding: 14px 16px 16px; background: #fff; margin-bottom: 10px; }
-.h1 { font-size: 19px; font-weight: 700; line-height: 1.4; }
+.h1row { display: flex; align-items: flex-start; gap: 10px; }
+.h1 { font-size: 19px; font-weight: 700; line-height: 1.4; flex: 1; min-width: 0; }
+.share { flex: none; margin: 0; padding: 0 0 0 10px; background: none; border-left: 1px solid $line; line-height: 1.2; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; color: $primary; }
+.share::after { border: none; }
 .sp { color: $text-2; margin-top: 4px; font-size: 14px; }
 .tags { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .pick { margin: 0 12px 10px; padding: 14px; border-radius: 12px; background: #fff; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }

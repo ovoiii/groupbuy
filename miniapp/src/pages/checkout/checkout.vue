@@ -23,7 +23,7 @@
     <view class="actbar-space" />
     <view class="actbar">
       <view class="sum">实付 <Price :value="pv.pay" :size="22" /><text v-if="pv.discount > 0" class="sub">已优惠 ¥{{ pv.discount }}</text></view>
-      <button class="btn cta" style="width: 150px" :loading="paying" @tap="submit">{{ cfg.payMock ? '微信支付' : '提交订单' }}</button>
+      <button class="btn cta" style="width: 150px" :loading="paying" @tap="submit">微信支付</button>
     </view>
 
     <view v-if="couponOpen" class="mask" @tap="couponOpen = false" />
@@ -39,7 +39,7 @@
   </view>
 </template>
 <script lang="ts" setup>
-import { api, post, img, cart, pointStore, toast, loadConfig, subscribe } from '@/gb/util'
+import { api, post, img, cart, pointStore, toast, loadConfig, subscribe, payOrder } from '@/gb/util'
 import Price from '@/gb/Price.vue'
 import Pickup from '@/gb/Pickup.vue'
 
@@ -68,19 +68,12 @@ async function submit() {
   try {
     const o = await post('/order/create', { pointId: point.id, items, userCouponId: chosen || pv.value.userCouponId || 'none', remark: remark.value })
     cart.clear(items.map((i) => i.periodGoodsId))
-    if (!o.payMock) return toast('微信支付还没接入，请联系管理员')
-    await pay(o.id)
+    // 订单已经建好：付没付成功都去订单详情（没付的可以在那里继续付）
+    const r = await payOrder(o.id).catch(() => 'cancel')
+    uni.redirectTo({ url: `/pages/order/order?id=${o.id}` + (r === 'cancel' ? '' : `&${r}=1`) })
   } finally {
     paying.value = false
   }
-}
-async function pay(id: string) {
-  // 接入微信支付后：后端返回支付参数，这里调 uni.requestPayment，成功后再查订单
-  await post('/order/pay', { id }).catch(() => {
-    uni.redirectTo({ url: `/pages/order/order?id=${id}` })
-    throw new Error('支付失败')
-  })
-  uni.redirectTo({ url: `/pages/order/order?id=${id}&paid=1` })
 }
 </script>
 <style lang="scss" scoped>

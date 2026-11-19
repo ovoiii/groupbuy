@@ -13,6 +13,7 @@ import org.jeecg.modules.groupbuy.mapper.*;
 import org.jeecg.modules.groupbuy.service.GbCommissionService;
 import org.jeecg.modules.groupbuy.service.GbCoreService;
 import org.jeecg.modules.groupbuy.service.GbNotifyService;
+import org.jeecg.modules.groupbuy.service.GbPayService;
 import org.jeecg.modules.groupbuy.service.GbViewService;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -48,6 +49,8 @@ public class GbAdminController {
     private final GbViewService view;
     private final GbNotifyService notify;
     private final GbNotifyLogMapper notifyMapper;
+    private final GbRefundMapper refundMapper;
+    private final GbPayService pay;
     private final GbMemberMapper memberMapper;
 
     public static final List<String> CATEGORIES = List.of("水果", "蔬菜", "肉禽蛋", "水产", "乳品烘焙", "粮油", "日用");
@@ -413,8 +416,11 @@ public class GbAdminController {
 
     @PostMapping("/order/cancel")
     public Result<?> orderCancel(@RequestBody Map<String, String> body) {
+        GbOrder o = orderMapper.selectById(body.get("id"));
+        if (o != null && S_UNPAID.equals(o.getStatus()) && GbPayService.PENDING.equals(pay.sync(o))) return Result.error("买家正在付款，稍后再试");
         core.cancelByAdmin(body.get("id"));
-        return Result.OK("已取消并原路退款");
+        o = orderMapper.selectById(body.get("id"));
+        return Result.OK(o.getPayTime() != null ? "已取消，钱会原路退回" : "已取消");
     }
 
     @PostMapping("/order/verify")
@@ -749,6 +755,42 @@ public class GbAdminController {
         if (rate.signum() < 0 || rate.compareTo(GbCommissionService.MAX_RATE) > 0) return Result.error("佣金比例要在 0% 到 30% 之间");
         int n = pointMapper.update(null, new LambdaUpdateWrapper<GbPoint>().eq(GbPoint::getId, String.valueOf(body.get("id"))).set(GbPoint::getCommissionRate, rate.setScale(4, RoundingMode.HALF_UP)));
         return n == 0 ? Result.error("提货点不存在") : Result.OK("已保存，之后付款的订单按新比例算");
+    }
+
+    // ================================================================ 退款记录
+
+    @GetMapping("/refund/list")
+    public Result<?> refundList(@RequestParam(required = false) String status, @RequestParam(required = false) String keyword,
+                                @RequestParam(defaultValue = "1") int pageNo, @RequestParam(defaultValue = "20") int pageSize) {
+        Page<GbRefund> pg = refundMapper.selectPage(new Page<>(pageNo, Math.min(pageSize, 100)), new LambdaQueryWrapper<GbRefund>()
+                .eq(status != null && !status.isBlank(), GbRefund::getStatus, status)
+                .and(keyword != null && !keyword.isBlank(), w -> w.eq(GbRefund::getOrderNo, keyword.trim()).or().eq(GbRefund::getRefundNo, keyword.trim()))
+                .orderByDesc(GbRefund::getCreateTime));
+        Map<String, GbOrder> os = pg.getRecords().isEmpty() ? Map.of()
+                : orderMapper.selectBatchIds(pg.getRecords().stream().map(GbRefund::getOrderId).distinct().toList()).stream().collect(Collectors.toMap(GbOrder::getId, o -> o));
+        List<Map<String, Object>> rows = pg.getRecords().stream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("r", r);
+            GbOrder o = os.get(r.getOrderId());
+            m.put("buyerName", o == null ? null : o.getBuyerName());
+            m.put("buyerPhone", o == null ? null : o.getBuyerPhone());
+            m.put("transactionId", o == null ? null : o.getTransactionId());
+            return m;
+        }).toList();
+        Map<String, Object> out = page(pg, rows);
+        Map<String, Long> counts = new LinkedHashMap<>();
+        counts.put("", refundMapper.selectCount(null));
+        for (String st : List.of("pending", "processing", "success", "failed", "abnormal"))
+            counts.put(st, refundMapper.selectCount(new LambdaQueryWrapper<GbRefund>().eq(GbRefund::getStatus, st)));
+        out.put("counts", counts);
+        out.put("real", pay.real());
+        return Result.OK(out);
+    }
+
+    @PostMapping("/refund/retry")
+    public Result<?> refundRetry(@RequestBody Map<String, String> body) {
+        pay.retry(body.get("id"));
+        return Result.OK("已重新提交，稍后刷新看结果");
     }
 
     // ================================================================ 消息通知

@@ -34,11 +34,34 @@ public class GbProperties {
     private Wx wx = new Wx();
     /** 订阅消息 */
     private Notify notify = new Notify();
+    /** 微信支付 */
+    private Pay pay = new Pay();
 
     @Data
     public static class Wx {
         private String appid;
         private String secret;
+        /** 微信接口地址，一般不用改（测试时可以指到本地模拟服务） */
+        private String apiBase = "https://api.weixin.qq.com";
+    }
+
+    /** 微信支付（API v3）。pay-mock=false 时必须配齐 */
+    @Data
+    public static class Pay {
+        /** 商户号 */
+        private String mchId;
+        /** 商户 API 证书序列号 */
+        private String merchantSerialNumber;
+        /** 商户 API 私钥文件 apiclient_key.pem 的路径 */
+        private String privateKeyPath;
+        /** APIv3 密钥（32 位） */
+        private String apiV3Key;
+        /** 微信支付公钥 ID（PUB_KEY_ID_ 开头）。新商户用公钥；不填则用平台证书（自动下载） */
+        private String publicKeyId;
+        /** 微信支付公钥文件 pub_key.pem 的路径 */
+        private String publicKeyPath;
+        /** 后端对外地址，用来拼支付 / 退款结果通知地址，必须是 https，如 https://shop.example.com/jeecg-boot */
+        private String notifyBase;
     }
 
     @Data

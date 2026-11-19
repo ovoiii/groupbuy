@@ -83,6 +83,8 @@ public class GbViewService {
             m.put("pickupCode", showCode ? o.getPickupCode() : (o.getPickupCode() == null ? null : o.getPickupCode().substring(0, 2) + "••••"));
             m.put("createTime", o.getCreateTime());
             m.put("payTime", o.getPayTime());
+            m.put("payChannel", o.getPayChannel());
+            m.put("transactionId", o.getTransactionId());
             m.put("payExpireTime", o.getPayExpireTime());
             m.put("pickupAt", o.getPickupAt());
             m.put("remindCount", o.getRemindCount());

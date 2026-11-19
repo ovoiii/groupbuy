@@ -41,6 +41,13 @@ public class GbOrder implements Serializable {
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date payTime;
+    /** wx 微信支付 / mock 模拟支付 / free 0 元单 */
+    private String payChannel;
+    /** 微信支付单号 */
+    private String transactionId;
+    /** 第一次向微信下单的时间：有值的待付款订单，关闭前要先问微信付没付 */
+    @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date prepayTime;
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date payExpireTime;

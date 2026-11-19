@@ -471,6 +471,15 @@ groupbuy:
   wx:
     appid:
     secret:
+  # 微信支付（API v3）。填好后把上面的 pay-mock 改成 false。证书和密钥文件放到 server/config/wxpay/（已在 .gitignore 里，不会提交）
+  pay:
+    mch-id:                    # 商户号
+    merchant-serial-number:    # 商户 API 证书序列号（商户平台 → 账户中心 → API 安全）
+    private-key-path:          # 商户 API 私钥 apiclient_key.pem 的路径
+    api-v3-key:                # APIv3 密钥（32 位）
+    public-key-id:             # 微信支付公钥 ID（PUB_KEY_ID_ 开头，新商户用公钥）；不填则自动下载平台证书
+    public-key-path:           # 微信支付公钥 pub_key.pem 的路径
+    notify-base:               # 后端对外的 https 地址，如 https://shop.example.com/jeecg-boot（支付 / 退款结果通知发到这里）
   # 订阅消息：在公众平台「订阅消息 → 公共模板库」选用模板，把模板 ID 和字段填到这里。
   # 没配 AppID 或某个场景没填 template-id 时只记录不发送（后台「订单履约 → 消息通知」能看到内容）。
   # fields 左边是模板详情里的字段名（如 thing1），右边是内容名，可用的内容名见 GbNotifyService 顶部注释；

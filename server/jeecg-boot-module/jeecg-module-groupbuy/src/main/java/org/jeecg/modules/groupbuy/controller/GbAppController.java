@@ -17,6 +17,10 @@ import org.jeecg.modules.groupbuy.entity.*;
 import org.jeecg.modules.groupbuy.mapper.*;
 import org.jeecg.modules.groupbuy.service.GbCommissionService;
 import org.jeecg.modules.groupbuy.service.GbCoreService;
+import org.jeecg.modules.groupbuy.service.GbLoginService;
+import org.jeecg.modules.groupbuy.service.GbPayService;
+import org.jeecg.modules.groupbuy.service.GbWxService;
+import org.springframework.http.ResponseEntity;
 import org.jeecg.modules.groupbuy.service.GbNotifyService;
 import org.jeecg.modules.groupbuy.service.GbTokenService;
 import org.jeecg.modules.groupbuy.service.GbViewService;
@@ -64,6 +68,9 @@ public class GbAppController {
     private final GbWithdrawMapper wdMapper;
     private final GbViewService view;
     private final GbNotifyService notify;
+    private final GbPayService pay;
+    private final GbWxService wx;
+    private final GbLoginService login;
 
     @Value("${jeecg.path.upload:}")
     private String uploadPath;
@@ -98,20 +105,50 @@ public class GbAppController {
         return Result.OK(notify.subscribe(me(req).getId(), l.stream().map(String::valueOf).toList()));
     }
 
-    /** 微信登录：wx.login 拿到的 code 换 openid */
+    /**
+     * 微信登录第一步：wx.login 的 code 换 openid。这个微信绑过手机号就直接登录；
+     * 没绑过返回 needPhone + 票据，小程序再让用户点「手机号快捷登录」调 /login/phone。
+     */
     @IgnoreAuth
     @PostMapping("/login")
-    public Result<?> login(@RequestBody Map<String, String> body) throws Exception {
-        String appid = props.getWx().getAppid(), secret = props.getWx().getSecret();
-        if (appid == null || appid.isBlank()) return Result.error("还没配置微信小程序 AppID，请先用手机号开发登录");
-        String url = "https://api.weixin.qq.com/sns/jscode2session?appid=" + appid + "&secret=" + secret + "&js_code=" + URLEncoder.encode(body.get("code"), StandardCharsets.UTF_8) + "&grant_type=authorization_code";
-        HttpResponse<String> r = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
-                .send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(8)).GET().build(), HttpResponse.BodyHandlers.ofString());
-        JSONObject j = JSON.parseObject(r.body());
-        String openid = j.getString("openid");
-        if (openid == null) { log.warn("[团购] 微信登录失败 {}", r.body()); return Result.error("微信登录失败，请重试"); }
-        GbMember m = memberMapper.selectOne(new LambdaQueryWrapper<GbMember>().eq(GbMember::getOpenid, openid));
-        if (m == null) { m = new GbMember(); m.setOpenid(openid); m.setNickname("微信用户"); m.setFirstOrderDone(0); memberMapper.insert(m); }
+    public Result<?> login(@RequestBody Map<String, String> body) {
+        String openid;
+        try {
+            openid = wx.openid(body.get("code"));
+        } catch (IllegalStateException e) {
+            log.warn("[团购] 微信登录出错：{}", e.getMessage());
+            return Result.error("微信服务暂时不可用，请稍后再试");
+        }
+        GbMember m = login.byOpenid(openid);
+        if (m != null) return Result.OK(Map.of("token", tokens.issue(m.getId()), "member", profile(m)));
+        // 小程序「手机号快捷登录」按钮会同时带上手机号 code：老用户不用（不去换手机号，省一次收费调用），新用户直接注册
+        String phoneCode = body.get("phoneCode");
+        if (phoneCode == null || phoneCode.isBlank()) return Result.OK(Map.of("needPhone", true, "ticket", tokens.issueTicket(openid)));
+        String phone;
+        try {
+            phone = wx.phone(phoneCode);
+        } catch (IllegalStateException e) {
+            log.warn("[团购] 获取手机号出错：{}", e.getMessage());
+            return Result.error("微信服务暂时不可用，请稍后再试");
+        }
+        m = login.bind(openid, phone, body.get("pt"));
+        return Result.OK(Map.of("token", tokens.issue(m.getId()), "member", profile(m)));
+    }
+
+    /** 微信登录第二步：票据 + 手机号快速验证组件给的 code → 按手机号找到或新建账号 */
+    @IgnoreAuth
+    @PostMapping("/login/phone")
+    public Result<?> loginPhone(@RequestBody Map<String, String> body) {
+        String openid = tokens.verifyTicket(body.get("ticket"));
+        if (openid == null) return Result.error(410, "登录超时了，请再点一次");
+        String phone;
+        try {
+            phone = wx.phone(body.get("code"));
+        } catch (IllegalStateException e) {
+            log.warn("[团购] 获取手机号出错：{}", e.getMessage());
+            return Result.error("微信服务暂时不可用，请稍后再试");
+        }
+        GbMember m = login.bind(openid, phone, body.get("pt"));
         return Result.OK(Map.of("token", tokens.issue(m.getId()), "member", profile(m)));
     }
 
@@ -123,14 +160,7 @@ public class GbAppController {
         String phone = body.get("phone");
         if (phone == null || !phone.matches("1\\d{10}")) return Result.error("请输入 11 位手机号");
         GbMember m = memberMapper.selectOne(new LambdaQueryWrapper<GbMember>().eq(GbMember::getPhone, phone).last("limit 1"));
-        if (m == null) {
-            m = new GbMember();
-            m.setPhone(phone);
-            String nick = body.get("nickname");
-            m.setNickname(nick == null || nick.isBlank() ? "用户" + phone.substring(7) : nick);
-            m.setFirstOrderDone(0);
-            memberMapper.insert(m);
-        }
+        if (m == null) m = login.create(phone, null, body.get("nickname"), body.get("pt"));
         return Result.OK(Map.of("token", tokens.issue(m.getId()), "member", profile(m)));
     }
 
@@ -175,7 +205,6 @@ public class GbAppController {
             m.setDefaultPointId(p.getId());
         }
         if (body.get("nickname") != null && !body.get("nickname").isBlank()) m.setNickname(body.get("nickname").trim());
-        if (body.get("phone") != null && body.get("phone").matches("1\\d{10}")) m.setPhone(body.get("phone"));
         memberMapper.updateById(m);
         return Result.OK(profile(m));
     }
@@ -350,19 +379,80 @@ public class GbAppController {
         return Result.OK(Map.of("id", o.getId(), "payAmount", o.getPayAmount(), "payExpireTime", o.getPayExpireTime(), "payMock", props.isPayMock()));
     }
 
-    /** 支付。模拟支付直接成功；接入微信支付后这里改成返回 wx.requestPayment 的参数 */
+    /**
+     * 付款。0 元单、模拟支付直接成功，返回 {paid: true}；
+     * 微信支付返回 {paid: false, payParams}，小程序拿去调 uni.requestPayment，付完再调 /order/pay/check 确认。
+     */
     @IgnoreAuth
     @PostMapping("/order/pay")
     public Result<?> pay(HttpServletRequest req, @RequestBody Map<String, String> body) {
-        GbOrder o = core.pay(me(req).getId(), body.get("id"));
-        return Result.OK(view.orderDetail(o, false, true));
+        GbMember m = me(req);
+        GbOrder o = core.payable(m.getId(), body.get("id"));
+        if (o.getPayAmount().signum() <= 0) {
+            core.payDirect(o, "free");
+            return Result.OK(Map.of("paid", true));
+        }
+        if (!pay.real()) {
+            core.payDirect(o, "mock");
+            return Result.OK(Map.of("paid", true));
+        }
+        if (m.getOpenid() == null || m.getOpenid().isBlank()) return Result.error("请先退出，用微信登录后再付款");
+        Map<String, Object> params = pay.prepay(o, m.getOpenid());
+        if (Boolean.TRUE.equals(params.get("paid"))) return Result.OK(Map.of("paid", true));
+        return Result.OK(Map.of("paid", false, "payParams", params));
+    }
+
+    /** 付完款确认：问一下微信（不等支付回调），返回订单现在是不是已付款 */
+    @IgnoreAuth
+    @PostMapping("/order/pay/check")
+    public Result<?> payCheck(HttpServletRequest req, @RequestBody Map<String, String> body) {
+        GbOrder o = orderMapper.selectById(body.get("id"));
+        if (o == null || !o.getMemberId().equals(me(req).getId())) return Result.error("订单不存在");
+        if (S_UNPAID.equals(o.getStatus())) {
+            pay.sync(o);
+            o = orderMapper.selectById(o.getId());
+        }
+        return Result.OK(Map.of("paid", !S_UNPAID.equals(o.getStatus()) && !S_CLOSED.equals(o.getStatus()), "status", o.getStatus()));
+    }
+
+    /** 微信支付结果通知（不要登录，靠验签）。成功返回 200 空，失败返回 4xx/5xx 让微信重发 */
+    @IgnoreAuth
+    @PostMapping("/pay/notify")
+    public ResponseEntity<?> payNotify(HttpServletRequest req, @RequestBody String body) {
+        return wxNotify(req, body, true);
+    }
+
+    /** 微信退款结果通知 */
+    @IgnoreAuth
+    @PostMapping("/pay/refund-notify")
+    public ResponseEntity<?> refundNotify(HttpServletRequest req, @RequestBody String body) {
+        return wxNotify(req, body, false);
+    }
+
+    private ResponseEntity<?> wxNotify(HttpServletRequest req, String body, boolean payment) {
+        com.wechat.pay.java.core.notification.RequestParam p = new com.wechat.pay.java.core.notification.RequestParam.Builder().serialNumber(req.getHeader("Wechatpay-Serial")).nonce(req.getHeader("Wechatpay-Nonce"))
+                .signature(req.getHeader("Wechatpay-Signature")).timestamp(req.getHeader("Wechatpay-Timestamp"))
+                .signType(req.getHeader("Wechatpay-Signature-Type")).body(body).build();
+        try {
+            if (payment) pay.handlePayNotify(p);
+            else pay.handleRefundNotify(p);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            boolean sign = GbPayService.isSignError(e);
+            log.warn("[团购] 微信{}通知处理失败：{}", payment ? "支付" : "退款", e.getMessage());
+            return ResponseEntity.status(sign ? 401 : 500).body(Map.of("code", "FAIL", "message", sign ? "签名验证失败" : "处理失败"));
+        }
     }
 
     @IgnoreAuth
     @PostMapping("/order/cancel")
     public Result<?> cancel(HttpServletRequest req, @RequestBody Map<String, String> body) {
+        GbOrder o = orderMapper.selectById(body.get("id"));
+        // 向微信下过单的待付款订单：先问微信付没付，付了就按已付款取消（原路退款）
+        if (o != null && S_UNPAID.equals(o.getStatus()) && GbPayService.PENDING.equals(pay.sync(o))) return Result.error("这单正在付款中，稍后再试");
         core.cancelByMember(me(req).getId(), body.get("id"));
-        return Result.OK("已取消，钱会原路退回");
+        GbOrder after = orderMapper.selectById(body.get("id"));
+        return Result.OK(after != null && after.getPayTime() != null ? "已取消，钱会原路退回" : "已取消");
     }
 
     @IgnoreAuth
@@ -424,6 +514,8 @@ public class GbAppController {
         GbPoint pt = mustLeader(req);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("point", pointVo(pt, null, null));
+        // 通过这个提货点的分享注册的新用户
+        out.put("newcomers", memberMapper.selectCount(new LambdaQueryWrapper<GbMember>().eq(GbMember::getSourcePointId, pt.getId())));
         // 正在提货的团期：有待提货或配送中订单的最近一期
         List<GbDelivery> ds = deliveryMapper.selectList(new LambdaQueryWrapper<GbDelivery>().eq(GbDelivery::getPointId, pt.getId()).orderByDesc(GbDelivery::getCreateTime).last("limit 3"));
         Map<String, GbPeriod> pm = view.periodMap(ds.stream().map(GbDelivery::getPeriodId).toList());

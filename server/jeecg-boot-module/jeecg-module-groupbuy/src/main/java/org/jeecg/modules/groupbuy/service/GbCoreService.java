@@ -8,6 +8,7 @@ import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.groupbuy.config.GbProperties;
 import org.jeecg.modules.groupbuy.entity.*;
 import org.jeecg.modules.groupbuy.mapper.*;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +42,8 @@ public class GbCoreService {
     private final GbAftersaleMapper asMapper;
     private final GbDeliveryMapper deliveryMapper;
     private final GbNotifyService notify;
+    private final GbRefundMapper refundMapper;
+    private final ApplicationEventPublisher events;
 
     // ======================================================== 工具
 
@@ -240,32 +243,48 @@ public class GbCoreService {
         return o;
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public GbOrder pay(String memberId, String orderId) {
+    /** 检查能不能付款：自己的、待付款、没超时、本期还没截单 */
+    public GbOrder payable(String memberId, String orderId) {
         GbOrder o = mustOwn(memberId, orderId);
         if (!S_UNPAID.equals(o.getStatus())) throw fail("订单已经付过款或已关闭");
-        if (o.getPayExpireTime().before(new Date())) { closeOrder(o, "超时未付款"); throw fail("订单已超时关闭，请重新下单"); }
+        if (o.getPayExpireTime().before(new Date())) throw fail("订单已超时，请重新下单");
         GbPeriod p = periodMapper.selectById(o.getPeriodId());
         if (!"live".equals(p.getStatus()) || !p.getCutoffTime().after(new Date())) throw fail("本期团已截单");
-        if (!props.isPayMock()) throw fail("微信支付还没接入（需要商户号），请在配置里打开 groupbuy.pay-mock");
-        markPaid(o);
-        return orderMapper.selectById(orderId);
+        return o;
     }
 
-    /** 支付成功：微信支付回调接入后也调这里 */
-    public void markPaid(GbOrder o) {
-        o.setStatus(S_PAID);
-        o.setPayTime(new Date());
-        o.setPickupCode(newPickupCode(o.getPeriodId()));
+    /** 不经过微信直接算付款成功：模拟支付（mock）、0 元单（free） */
+    @Transactional(rollbackFor = Exception.class)
+    public void payDirect(GbOrder o, String channel) {
+        if (!markPaid(o, channel, null)) throw fail("订单已关闭，请重新下单");
+    }
+
+    /**
+     * 付款成功：模拟支付、0 元单、微信支付回调 / 查单都走这里。
+     * 只有还是待付款时才改（条件更新），被关单抢先了返回 false，由调用方决定退款。
+     */
+    public boolean markPaid(GbOrder o, String channel, String transactionId) {
+        Date now = new Date();
+        String code = newPickupCode(o.getPeriodId());
         GbPoint pt = pointMapper.selectById(o.getPointId());
-        o.setCommissionRate(pt == null || pt.getCommissionRate() == null ? BigDecimal.ZERO : pt.getCommissionRate());
-        orderMapper.updateById(o);
+        BigDecimal rate = pt == null || pt.getCommissionRate() == null ? BigDecimal.ZERO : pt.getCommissionRate();
+        int n = orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, o.getId()).eq(GbOrder::getStatus, S_UNPAID)
+                .set(GbOrder::getStatus, S_PAID).set(GbOrder::getPayTime, now).set(GbOrder::getPickupCode, code).set(GbOrder::getCommissionRate, rate)
+                .set(GbOrder::getPayChannel, channel).set(transactionId != null, GbOrder::getTransactionId, transactionId));
+        if (n == 0) return false;
+        o.setStatus(S_PAID);
+        o.setPayTime(now);
+        o.setPickupCode(code);
+        o.setCommissionRate(rate);
+        o.setPayChannel(channel);
+        if (transactionId != null) o.setTransactionId(transactionId);
         if (o.getUserCouponId() != null) {
             ucMapper.update(null, new LambdaUpdateWrapper<GbUserCoupon>().eq(GbUserCoupon::getId, o.getUserCouponId()).set(GbUserCoupon::getStatus, "used").set(GbUserCoupon::getUseTime, new Date()));
             GbUserCoupon uc = ucMapper.selectById(o.getUserCouponId());
             if (uc != null) couponMapper.addUsed(uc.getCouponId(), 1);
         }
         memberMapper.update(null, new LambdaUpdateWrapper<GbMember>().eq(GbMember::getId, o.getMemberId()).set(GbMember::getFirstOrderDone, 1));
+        return true;
     }
 
     /** 居民自己取消：截单前都可以 */
@@ -273,7 +292,7 @@ public class GbCoreService {
     public void cancelByMember(String memberId, String orderId) {
         GbOrder o = mustOwn(memberId, orderId);
         if (!S_UNPAID.equals(o.getStatus()) && !S_PAID.equals(o.getStatus())) throw fail("已截单，不能取消了；有问题请申请售后");
-        closeOrder(o, S_PAID.equals(o.getStatus()) ? "买家取消（已退款）" : "买家取消");
+        if (!closeOrder(o, S_PAID.equals(o.getStatus()) ? "买家取消（已退款）" : "买家取消")) throw fail("订单状态刚刚变了，请刷新后再试");
     }
 
     /** 后台取消并退款 */
@@ -282,17 +301,22 @@ public class GbCoreService {
         GbOrder o = orderMapper.selectById(orderId);
         if (o == null) throw fail("订单不存在");
         if (S_DONE.equals(o.getStatus()) || S_CLOSED.equals(o.getStatus())) throw fail("已提货或已关闭的订单不能取消，请走售后");
-        closeOrder(o, "平台取消（已退款）");
-        if (o.getPayTime() != null) notify.aftersale(o, "平台取消，已退款", o.getPayAmount(), "订单已取消，钱原路退回");
+        if (!closeOrder(o, o.getPayTime() != null ? "平台取消（已退款）" : "平台取消")) throw fail("订单状态刚刚变了，请刷新后再试");
+        if (o.getPayTime() != null) notify.aftersale(o, "已退款", o.getPayAmount(), "平台取消了订单，钱原路退回");
     }
 
-    /** 关闭订单：放回库存、退回券、已付款的原路退款（模拟） */
-    public void closeOrder(GbOrder o, String reason) {
+    /**
+     * 关闭订单：放回库存、退回券、已付款的原路退款。
+     * 只在状态还是读出来时的样子才关（条件更新）：防止和支付回调撞车——比如按「未付款」关单的瞬间钱到了，
+     * 那样会关掉一个已付款的单却不退款。状态变了返回 false。
+     */
+    public boolean closeOrder(GbOrder o, String reason) {
         boolean paid = o.getPayTime() != null;
-        int n = orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, o.getId()).ne(GbOrder::getStatus, S_CLOSED)
+        int n = orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, o.getId()).eq(GbOrder::getStatus, o.getStatus())
+                .ne(GbOrder::getStatus, S_CLOSED)
                 .set(GbOrder::getStatus, S_CLOSED).set(GbOrder::getCloseReason, reason)
                 .set(paid, GbOrder::getRefundAmount, o.getPayAmount()));
-        if (n == 0) return;
+        if (n == 0) return false;
         for (GbOrderItem it : items(o.getId())) pgMapper.release(it.getPeriodGoodsId(), it.getQty());
         if (o.getUserCouponId() != null) {
             GbUserCoupon uc = ucMapper.selectById(o.getUserCouponId());
@@ -302,7 +326,37 @@ public class GbCoreService {
                         .set(GbUserCoupon::getStatus, "unused").set(GbUserCoupon::getOrderId, null).set(GbUserCoupon::getUseTime, null));
             }
         }
-        if (paid) log.info("[团购] 订单 {} 关闭并退款 {}（模拟退款，接入微信支付后在这里调退款接口）", o.getOrderNo(), o.getPayAmount());
+        if (paid) requestRefund(o, o.getPayAmount(), reason, null);
+        else if (o.getPrepayTime() != null) events.publishEvent(new GbPayEvents.UnpaidClosed(o.getOrderNo()));
+        return true;
+    }
+
+    /**
+     * 退款：先在本事务里写一条退款记录，事务提交后 GbPayService 再调微信（失败会自动重试，退款单号不变不会重复退）。
+     * 模拟支付 / 0 元单没有真实扣款，直接记为已退回。
+     */
+    public GbRefund requestRefund(GbOrder o, BigDecimal amount, String reason, String aftersaleId) {
+        if (amount == null || amount.signum() <= 0) return null;
+        boolean real = "wx".equals(o.getPayChannel());
+        GbRefund r = new GbRefund();
+        r.setRefundNo("RF" + new SimpleDateFormat("yyMMddHHmmss").format(new Date()) + String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000)));
+        r.setOrderId(o.getId());
+        r.setOrderNo(o.getOrderNo());
+        r.setAftersaleId(aftersaleId);
+        r.setPayChannel(o.getPayChannel());
+        r.setAmount(money(amount));
+        r.setTotal(o.getPayAmount());
+        r.setReason(reason == null ? null : reason.length() > 80 ? reason.substring(0, 80) : reason);
+        r.setStatus(real ? "pending" : "success");
+        r.setAttempts(0);
+        r.setLastError(real ? null : "模拟支付或 0 元单，没有真实扣款");
+        r.setSuccessTime(real ? null : new Date());
+        r.setCreateTime(new Date());
+        r.setUpdateTime(new Date());
+        refundMapper.insert(r);
+        if (real) events.publishEvent(new GbPayEvents.RefundCreated(r.getId()));
+        log.info("[团购] 订单 {} 退款 {}（{}）", o.getOrderNo(), r.getAmount(), real ? "微信原路退回" : "模拟");
+        return r;
     }
 
     public List<GbOrderItem> items(String orderId) {
@@ -461,17 +515,15 @@ public class GbCoreService {
         BigDecimal cap = a.getApplyAmount();
         BigDecimal amt = amount == null ? cap : money(amount);
         if (amt.signum() <= 0 || amt.compareTo(cap) > 0) throw fail("退款金额要在 0.01 到 " + cap + " 元之间");
-        a.setRefundAmount(amt);
-        a.setDuty(duty);
-        a.setReply(reply);
-        a.setStatus("done");
-        a.setHandleTime(new Date());
-        a.setHandleBy(by);
-        asMapper.updateById(a);
+        // 条件更新：两个人同时点同意、或者和超时自动同意撞上，只有一个能成功，不会退两次
+        int n = asMapper.update(null, new LambdaUpdateWrapper<GbAftersale>().eq(GbAftersale::getId, id).eq(GbAftersale::getStatus, "wait")
+                .set(GbAftersale::getRefundAmount, amt).set(GbAftersale::getDuty, duty).set(GbAftersale::getReply, reply)
+                .set(GbAftersale::getStatus, "done").set(GbAftersale::getHandleTime, new Date()).set(GbAftersale::getHandleBy, by));
+        if (n == 0) throw fail("已经处理过了");
         orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, o.getId())
-                .set(GbOrder::getAfterStatus, "refunded").set(GbOrder::getRefundAmount, money(o.getRefundAmount().add(amt))));
+                .set(GbOrder::getAfterStatus, "refunded").setSql("refund_amount = refund_amount + " + amt.toPlainString()));
+        requestRefund(o, amt, "售后退款 " + a.getAsNo(), a.getId());
         notify.aftersale(o, "已退款", amt, reply);
-        log.info("[团购] 售后 {} 退款 {}（模拟退款）", a.getAsNo(), amt);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -480,11 +532,9 @@ public class GbCoreService {
         GbAftersale a = asMapper.selectById(id);
         if (a == null) throw fail("售后单不存在");
         if (!"wait".equals(a.getStatus())) throw fail("已经处理过了");
-        a.setStatus("rej");
-        a.setReply(reply);
-        a.setHandleTime(new Date());
-        a.setHandleBy(by);
-        asMapper.updateById(a);
+        int n = asMapper.update(null, new LambdaUpdateWrapper<GbAftersale>().eq(GbAftersale::getId, id).eq(GbAftersale::getStatus, "wait")
+                .set(GbAftersale::getStatus, "rej").set(GbAftersale::getReply, reply).set(GbAftersale::getHandleTime, new Date()).set(GbAftersale::getHandleBy, by));
+        if (n == 0) throw fail("已经处理过了");
         orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, a.getOrderId()).set(GbOrder::getAfterStatus, "rejected"));
         notify.aftersale(orderMapper.selectById(a.getOrderId()), "已驳回", null, reply);
     }

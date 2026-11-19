@@ -15,12 +15,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.text.SimpleDateFormat;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -63,15 +58,13 @@ public class GbNotifyService {
     private final GbOrderItemMapper itemMapper;
     private final GbPointMapper pointMapper;
     private final GbPeriodMapper periodMapper;
+    private final GbWxService wx;
 
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "gb-notify");
         t.setDaemon(true);
         return t;
     });
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-    private volatile String accessToken;
-    private volatile long tokenExpireAt;
 
     @PreDestroy
     public void shutdown() {
@@ -81,8 +74,7 @@ public class GbNotifyService {
     // ======================================================== 配置
 
     public boolean wxReady() {
-        GbProperties.Wx wx = props.getWx();
-        return notBlank(wx.getAppid()) && notBlank(wx.getSecret());
+        return wx.ready();
     }
 
     public String templateOf(String scene) {
@@ -282,7 +274,7 @@ public class GbNotifyService {
         body.put("lang", "zh_CN");
         body.put("data", data);
         try {
-            JSONObject r = callSend(body, false);
+            JSONObject r = wx.postWithToken("/cgi-bin/message/subscribe/send", body);
             int code = r.getIntValue("errcode");
             if (code == 0) {
                 done(lg, "sent", null);
@@ -297,37 +289,6 @@ public class GbNotifyService {
             logMapper.returnQuota(lg.getMemberId(), tmpl);
             done(lg, "failed", "调用微信接口出错：" + e.getMessage());
         }
-    }
-
-    private JSONObject callSend(JSONObject body, boolean retried) throws Exception {
-        String url = "https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=" + token(retried);
-        JSONObject r = postJson(url, body.toJSONString());
-        int code = r.getIntValue("errcode");
-        // access_token 失效：强制刷新后重试一次
-        if (!retried && (code == 40001 || code == 42001 || code == 40014)) return callSend(body, true);
-        return r;
-    }
-
-    /** 稳定版 access_token，提前 5 分钟刷新 */
-    private synchronized String token(boolean force) throws Exception {
-        if (!force && accessToken != null && System.currentTimeMillis() < tokenExpireAt) return accessToken;
-        JSONObject req = new JSONObject();
-        req.put("grant_type", "client_credential");
-        req.put("appid", props.getWx().getAppid());
-        req.put("secret", props.getWx().getSecret());
-        req.put("force_refresh", false);
-        JSONObject r = postJson("https://api.weixin.qq.com/cgi-bin/stable_token", req.toJSONString());
-        String t = r.getString("access_token");
-        if (t == null) throw new IllegalStateException("获取 access_token 失败：" + r.getString("errmsg"));
-        accessToken = t;
-        tokenExpireAt = System.currentTimeMillis() + (r.getLongValue("expires_in", 7200) - 300) * 1000L;
-        return t;
-    }
-
-    private JSONObject postJson(String url, String json) throws Exception {
-        HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(8))
-                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(json)).build(), HttpResponse.BodyHandlers.ofString());
-        return JSON.parseObject(r.body());
     }
 
     private void done(GbNotifyLog lg, String status, String note) {

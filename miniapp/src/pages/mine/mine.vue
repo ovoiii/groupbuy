@@ -30,17 +30,18 @@
       <view v-if="!me.leaderPoint" class="gb-row" @tap="go('/pages/leader/apply')"><wd-icon name="shop" size="18px" color="#535b56" /><text>申请当团长</text><view class="v" :class="APPLY[me.applyStatus]?.[1] || 'muted'">{{ APPLY[me.applyStatus]?.[0] || '在家门口开个提货点' }}<wd-icon name="arrow-right" size="14px" color="#6b716d" /></view></view>
       <view class="gb-row" @tap="logout"><wd-icon name="logout" size="18px" color="#535b56" /><text>退出登录</text></view>
     </view>
-    <view class="gb-tip">客服电话 400-000-0000（示例） · 09:00–21:00</view>
+    <view class="gb-tip">客服电话 400-000-0000（示例） · 09:00–21:00<br /><text class="lk" @tap="go('/pages/agreement/agreement?type=user')">用户协议</text> · <text class="lk" @tap="go('/pages/agreement/agreement?type=privacy')">隐私政策</text></view>
   </view>
 </template>
 <script lang="ts" setup>
-import { api, token, toLogin } from '@/gb/util'
+import { api, token, toLogin, rememberMe } from '@/gb/util'
 const statusH = uni.getSystemInfoSync().statusBarHeight || 20
 const OT = [['unpaid', '待付款', 'wallet'], ['paid', '待截单', 'time'], ['arrived', '待提货', 'bags'], ['refund', '售后', 'rollback']]
 const me = ref<any>(null)
 onShow(async () => {
   if (!token.get()) return toLogin()
   me.value = await api('/me').catch(() => null)
+  if (me.value) rememberMe(me.value)
 })
 const go = (url: string) => uni.navigateTo({ url })
 function goOrders(t: string) {
@@ -70,6 +71,7 @@ function logout() {
 .leader .b { font-weight: 700; }
 .leader .s { display: block; font-size: 13px; opacity: 0.75; color: #fff; align-items: flex-start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .leader .go { display: flex; align-items: center; gap: 2px; font-size: 14px; color: $mark-bright; font-weight: 600; flex: none; }
+.lk { color: $text-2; text-decoration: underline; }
 .st-wait { color: $mark; font-size: 14px; }
 .st-rej { color: $price; font-size: 14px; }
 </style>

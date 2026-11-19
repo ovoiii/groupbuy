@@ -88,7 +88,9 @@ export const cart = {
   clear(ids?: string[]) { if (!ids) return cart.set({}); const c = cart.get(); ids.forEach((i) => delete c[i]); cart.set(c) },
   badge() {
     const n = cart.count()
-    try { n ? uni.setTabBarBadge({ index: 1, text: String(n) }) : uni.removeTabBarBadge({ index: 1 }) } catch (e) {}
+    // 不在 tab 页时（如结算页）微信和 H5 都会失败，给个 fail 回调免得变成未处理的错误
+    const fail = () => {}
+    try { n ? uni.setTabBarBadge({ index: 1, text: String(n), fail }) : uni.removeTabBarBadge({ index: 1, fail }) } catch (e) {}
   },
 }
 
@@ -132,6 +134,82 @@ export function subscribe(scenes: string[]): Promise<void> {
     resolve()
   })
 }
+
+// ---------------- 付款 ----------------
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+/**
+ * 付款。模拟支付 / 0 元单服务器直接算成功；微信支付拿参数调起收银台，付完以服务器向微信查到的结果为准。
+ * 返回 paid 付款成功 / cancel 没付（取消或失败，订单还在，可以到订单里继续付）/ checking 微信说成功但服务器还没确认
+ */
+export async function payOrder(id: string): Promise<'paid' | 'cancel' | 'checking'> {
+  const r = await post('/order/pay', { id })
+  if (r.paid) return 'paid'
+  // #ifdef MP-WEIXIN
+  const ok = await new Promise<boolean>((resolve) => {
+    uni.requestPayment({
+      provider: 'wxpay',
+      ...r.payParams,
+      success: () => resolve(true),
+      fail: (e: any) => {
+        if (!/cancel/.test(e?.errMsg || '')) toast('支付没有成功，可以在订单里重新付款')
+        resolve(false)
+      },
+    } as any)
+  })
+  if (!ok) return 'cancel'
+  uni.showLoading({ title: '确认付款结果', mask: true })
+  try {
+    for (let i = 0; i < 6; i++) {
+      const s: any = await api('/order/pay/check', { id }, 'POST', { silent: true }).catch(() => null)
+      if (s?.paid) return 'paid'
+      await wait(1000)
+    }
+  } finally {
+    uni.hideLoading()
+  }
+  return 'checking'
+  // #endif
+  // #ifndef MP-WEIXIN
+  toast('请在微信小程序里付款')
+  return 'cancel'
+  // #endif
+}
+
+// ---------------- 分享 ----------------
+const FROM_PT = 'gb-from-pt'
+const LEADER_PT = 'gb-leader-pt'
+/** 拿到 /me 后记一下自己是不是团长（分享时用，不用每个页面都去查） */
+export function rememberMe(me: any) {
+  uni.setStorageSync(LEADER_PT, me?.leaderPoint?.id || '')
+}
+/** 分享出去的链接带上提货点：团长带自己的点，居民带自己常用的点 */
+export function sharePointId(): string {
+  return (uni.getStorageSync(LEADER_PT) as string) || pointStore.get()?.id || ''
+}
+/**
+ * 从分享链接进来（带 pt=提货点）：记下来源，注册时算作这个提货点拉来的新人；
+ * 还没选过提货点的直接选上。返回分享来的提货点（已经选了别的点时，页面可以提示切换）
+ */
+export async function handleShareEntry(q: any): Promise<any | null> {
+  const pt = q?.pt
+  if (!pt) return null
+  uni.setStorageSync(FROM_PT, pt)
+  // 没登录：先记着，注册新账号时默认选这个提货点（接口都要登录，这里不去查）
+  if (!token.get()) return null
+  const cur = pointStore.get()
+  if (cur?.id === pt) return null
+  const list: any[] = await api('/points', undefined, 'GET', { silent: true }).catch(() => [])
+  const p = list.find((x) => x.id === pt)
+  if (!p) return null
+  if (!cur) {
+    pointStore.set(p)
+    if (token.get()) api('/me/update', { pointId: p.id }, 'POST', { silent: true }).catch(() => {})
+    return null
+  }
+  return p
+}
+/** 登录接口带上分享来源（只对新注册的账号生效） */
+export const fromPoint = () => (uni.getStorageSync(FROM_PT) as string) || undefined
 
 // ---------------- 地图导航 ----------------
 /** 打开微信内置地图（可以再跳高德 / 百度 / 腾讯地图导航）；没标位置或打不开时复制地址 */

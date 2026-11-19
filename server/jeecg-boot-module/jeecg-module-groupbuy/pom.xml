@@ -17,5 +17,11 @@
             <groupId>org.jeecgframework.boot3</groupId>
             <artifactId>jeecg-boot-base-core</artifactId>
         </dependency>
+        <!-- 微信支付 API v3 官方 SDK：下单、查单、退款、回调验签解密 -->
+        <dependency>
+            <groupId>com.github.wechatpay-apiv3</groupId>
+            <artifactId>wechatpay-java</artifactId>
+            <version>0.2.17</version>
+        </dependency>
     </dependencies>
 </project>

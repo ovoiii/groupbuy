@@ -51,6 +51,7 @@
             <span class="mk-pickup" style="margin-left: auto"><Icon icon="ant-design:environment-outlined" :size="13" /><b>{{ md(cur.pickupTime) }}</b> 起可提</span></div>
           <dl class="gb-dl" style="margin-top: 14px"><dt>提货点</dt><dd>{{ cur.pointName }}<br /><span class="gb-muted">{{ cur.pointAddress }}</span></dd>
             <dt>团长</dt><dd>{{ cur.leaderName }} · {{ cur.leaderPhone }}</dd><dt>买家</dt><dd>{{ cur.buyerName }} · {{ cur.buyerPhone }}</dd>
+            <dt v-if="cur.payTime">付款</dt><dd v-if="cur.payTime">{{ { wx: '微信支付', mock: '模拟支付', free: '0 元单' }[cur.payChannel] || '—' }} · {{ cur.payTime }}<template v-if="cur.transactionId"><br /><span class="gb-muted">微信支付单号 {{ cur.transactionId }}</span></template></dd>
             <dt v-if="cur.remark">留言</dt><dd v-if="cur.remark">{{ cur.remark }}</dd>
             <dt v-if="cur.delivery">配送</dt><dd v-if="cur.delivery">{{ DELIVERY[cur.delivery.status] }}{{ cur.delivery.shortNote ? '，签收时登记：' + cur.delivery.shortNote : '' }}</dd></dl>
         </div>
