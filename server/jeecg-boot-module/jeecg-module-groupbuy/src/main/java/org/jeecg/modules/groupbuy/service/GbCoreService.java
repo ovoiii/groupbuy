@@ -40,6 +40,7 @@ public class GbCoreService {
     private final GbUserCouponMapper ucMapper;
     private final GbAftersaleMapper asMapper;
     private final GbDeliveryMapper deliveryMapper;
+    private final GbNotifyService notify;
 
     // ======================================================== 工具
 
@@ -256,6 +257,8 @@ public class GbCoreService {
         o.setStatus(S_PAID);
         o.setPayTime(new Date());
         o.setPickupCode(newPickupCode(o.getPeriodId()));
+        GbPoint pt = pointMapper.selectById(o.getPointId());
+        o.setCommissionRate(pt == null || pt.getCommissionRate() == null ? BigDecimal.ZERO : pt.getCommissionRate());
         orderMapper.updateById(o);
         if (o.getUserCouponId() != null) {
             ucMapper.update(null, new LambdaUpdateWrapper<GbUserCoupon>().eq(GbUserCoupon::getId, o.getUserCouponId()).set(GbUserCoupon::getStatus, "used").set(GbUserCoupon::getUseTime, new Date()));
@@ -280,6 +283,7 @@ public class GbCoreService {
         if (o == null) throw fail("订单不存在");
         if (S_DONE.equals(o.getStatus()) || S_CLOSED.equals(o.getStatus())) throw fail("已提货或已关闭的订单不能取消，请走售后");
         closeOrder(o, "平台取消（已退款）");
+        if (o.getPayTime() != null) notify.aftersale(o, "平台取消，已退款", o.getPayAmount(), "订单已取消，钱原路退回");
     }
 
     /** 关闭订单：放回库存、退回券、已付款的原路退款（模拟） */
@@ -372,6 +376,7 @@ public class GbCoreService {
         if (d.getSortTime() == null) d.setSortTime(new Date());
         d.setShipTime(new Date());
         deliveryMapper.updateById(d);
+        notify.ship(d);
     }
 
     /** 团长签收：这个提货点这期的订单全部变成待提货 */
@@ -385,9 +390,11 @@ public class GbCoreService {
         d.setSignTime(new Date());
         d.setShortNote(shortNote == null || shortNote.isBlank() ? null : shortNote.trim());
         deliveryMapper.updateById(d);
+        List<GbOrder> arrived = orderMapper.selectList(new LambdaQueryWrapper<GbOrder>().eq(GbOrder::getPeriodId, d.getPeriodId()).eq(GbOrder::getPointId, d.getPointId()).eq(GbOrder::getStatus, S_SHIPPING));
         orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getPeriodId, d.getPeriodId()).eq(GbOrder::getPointId, d.getPointId())
                 .eq(GbOrder::getStatus, S_SHIPPING).set(GbOrder::getStatus, S_ARRIVED));
-        log.info("[团购] 配送单 {} 签收，发送到货通知（订阅消息接入后在这里发）", deliveryId);
+        arrived.forEach(notify::arrived);
+        log.info("[团购] 配送单 {} 签收，给 {} 单发到货通知", deliveryId, arrived.size());
     }
 
     // ======================================================== 核销
@@ -463,6 +470,7 @@ public class GbCoreService {
         asMapper.updateById(a);
         orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, o.getId())
                 .set(GbOrder::getAfterStatus, "refunded").set(GbOrder::getRefundAmount, money(o.getRefundAmount().add(amt))));
+        notify.aftersale(o, "已退款", amt, reply);
         log.info("[团购] 售后 {} 退款 {}（模拟退款）", a.getAsNo(), amt);
     }
 
@@ -478,6 +486,7 @@ public class GbCoreService {
         a.setHandleBy(by);
         asMapper.updateById(a);
         orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, a.getOrderId()).set(GbOrder::getAfterStatus, "rejected"));
+        notify.aftersale(orderMapper.selectById(a.getOrderId()), "已驳回", null, reply);
     }
 
     // ======================================================== 券

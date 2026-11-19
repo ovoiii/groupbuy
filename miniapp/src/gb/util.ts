@@ -98,6 +98,53 @@ export const pointStore = {
   set: (p: any) => uni.setStorageSync(POINT, p),
 }
 
+// ---------------- 订阅消息 ----------------
+// 场景 → 模板 ID，来自后端 /config；启动时拉一次存起来，弹框时不能再等网络
+let tmpl: Record<string, string> = uni.getStorageSync('gb-tmpl') || {}
+export function loadConfig() {
+  return api('/config', undefined, 'GET', { silent: true }).then((c: any) => {
+    tmpl = c.tmpl || {}
+    uni.setStorageSync('gb-tmpl', tmpl)
+    return c
+  })
+}
+/**
+ * 弹微信订阅框（一次最多 3 个模板），用户点了「允许」的报给后端，之后可以给他发一条。
+ * 微信要求由点击直接触发：必须在点击事件里、任何 await 之前调用。没配模板或不是微信小程序时什么都不做。
+ * arrived 到货 / pickup 取货提醒 / aftersale 售后结果 / ship 发车 / apply 入驻审核 / withdraw 提现结果
+ */
+export function subscribe(scenes: string[]): Promise<void> {
+  return new Promise((resolve) => {
+    // #ifdef MP-WEIXIN
+    const ids = [...new Set(scenes.map((s) => tmpl[s]).filter(Boolean))].slice(0, 3)
+    if (ids.length) {
+      uni.requestSubscribeMessage({
+        tmplIds: ids,
+        success: (r: any) => {
+          const ok = ids.filter((i) => r[i] === 'accept')
+          if (ok.length && token.get()) api('/notify/subscribe', { ids: ok }, 'POST', { silent: true }).catch(() => {})
+        },
+        complete: () => resolve(),
+      } as any)
+      return
+    }
+    // #endif
+    resolve()
+  })
+}
+
+// ---------------- 地图导航 ----------------
+/** 打开微信内置地图（可以再跳高德 / 百度 / 腾讯地图导航）；没标位置或打不开时复制地址 */
+export function openMap(p: { lat?: any; lng?: any; name?: string; address?: string }) {
+  const copy = () => {
+    if (!p.address) return toast('这个提货点还没标位置')
+    uni.setClipboardData({ data: p.address, success: () => toast('地址已复制，可以粘贴到地图 App 里搜'), fail: () => toast(p.address!) })
+  }
+  const lat = Number(p.lat), lng = Number(p.lng)
+  if (!lat || !lng) return copy()
+  uni.openLocation({ latitude: lat, longitude: lng, name: p.name || '', address: p.address || '', scale: 17, fail: copy })
+}
+
 // ---------------- 时间 ----------------
 let offset = 0
 export function syncServerTime(serverTime?: any) {

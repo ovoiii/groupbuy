@@ -464,8 +464,35 @@ groupbuy:
   pay-timeout-minutes: 15
   aftersale-auto-hours: 24
   aftersale-window-hours: 24
+  # 团长单笔最少提现（元）
+  withdraw-min: 10
   # 空库时写入演示数据
   demo-seed: true
   wx:
     appid:
     secret:
+  # 订阅消息：在公众平台「订阅消息 → 公共模板库」选用模板，把模板 ID 和字段填到这里。
+  # 没配 AppID 或某个场景没填 template-id 时只记录不发送（后台「订单履约 → 消息通知」能看到内容）。
+  # fields 左边是模板详情里的字段名（如 thing1），右边是内容名，可用的内容名见 GbNotifyService 顶部注释；
+  # 右边写的不是内容名就原样当固定文字发。字段类型不同长度限制不同，程序会自动截断。
+  notify:
+    state: formal        # 点开消息进哪个版本：developer 开发版 / trial 体验版 / formal 正式版
+    scenes:
+      arrived:           # 到货通知（居民），可搜「到货通知」「取货提醒」类模板
+        template-id:
+        fields: { thing1: point, character_string2: code, thing3: goods, time4: time, thing5: tip }
+      pickup:            # 团长点「提醒取货」（居民）
+        template-id:
+        fields: { thing1: point, character_string2: code, thing3: goods, thing4: tip }
+      aftersale:         # 售后结果（居民），可搜「退款通知」「售后处理结果」
+        template-id:
+        fields: { character_string1: orderNo, phrase2: result, amount3: amount, thing4: reply }
+      ship:              # 发车通知（团长），可搜「发货通知」
+        template-id:
+        fields: { thing1: point, time2: time, thing3: tip }
+      apply:             # 入驻审核结果（申请人），可搜「审核结果通知」
+        template-id:
+        fields: { thing1: point, phrase2: result, thing3: reply, time4: time }
+      withdraw:          # 提现结果（团长），可搜「提现结果通知」
+        template-id:
+        fields: { amount1: amount, phrase2: result, thing3: reply, time4: time }

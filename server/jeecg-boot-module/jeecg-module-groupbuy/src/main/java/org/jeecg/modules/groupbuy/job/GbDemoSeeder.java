@@ -134,7 +134,7 @@ public class GbDemoSeeder implements ApplicationRunner {
             p.setHouseholds((Integer) r[4]); p.setHasFridge((Integer) r[5]); p.setStatus((String) r[6]);
             p.setSince(r[7] == null ? null : java.sql.Date.valueOf((String) r[7]));
             p.setLng(BigDecimal.valueOf((Double) r[8])); p.setLat(BigDecimal.valueOf((Double) r[9]));
-            p.setOpenHours("08:00-21:00"); p.setCommissionRate(BigDecimal.ZERO);
+            p.setOpenHours("08:00-21:00"); p.setCommissionRate(new BigDecimal("0.10"));
             if ("pending".equals(r[6])) p.setApplyNote("写字楼一层快递柜旁空位，自有货架 2 个，无冰柜；估计每天 60–80 单。写字楼周末不开门。");
             if ("paused".equals(r[6])) p.setStatusNote("店面装修，12 月恢复");
             pointMapper.insert(p);

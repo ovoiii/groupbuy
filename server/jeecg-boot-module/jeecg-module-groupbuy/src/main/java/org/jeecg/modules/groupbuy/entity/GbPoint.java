@@ -36,7 +36,7 @@ public class GbPoint implements Serializable {
     private String statusNote;
     /** 入驻申请说明 */
     private String applyNote;
-    /** 佣金比例（预留，本版不结算） */
+    /** 团长佣金比例，0.10 = 10% */
     private BigDecimal commissionRate;
     /** 合作开始 */
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd")

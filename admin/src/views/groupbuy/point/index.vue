@@ -32,6 +32,8 @@
     <a-drawer v-model:open="auditOpen" :title="cur ? '团长入驻审核 · ' + cur.leaderName : ''" :width="560">
       <template v-if="cur">
         <div class="gb-sec"><h3>申请信息</h3><dl class="gb-dl"><dt>申请人</dt><dd>{{ cur.leaderName }} · {{ cur.leaderPhone }}</dd><dt>提货点</dt><dd>{{ cur.name }}</dd><dt>地址</dt><dd>{{ cur.address }}</dd>
+          <dt>位置</dt><dd>{{ cur.lat ? `已在地图标记（${Number(cur.lat).toFixed(4)}, ${Number(cur.lng).toFixed(4)}）` : '没标，电话里确认' }}</dd>
+          <dt>覆盖户数</dt><dd>{{ cur.households ? cur.households.toLocaleString() + ' 户' : '没填' }}</dd><dt>营业时间</dt><dd>{{ cur.openHours || '—' }}</dd>
           <dt>冰柜</dt><dd>{{ cur.hasFridge ? '有' : '没有' }}</dd><dt>说明</dt><dd>{{ cur.applyNote || '—' }}</dd><dt>提交时间</dt><dd>{{ md(cur.createTime) }}</dd></dl></div>
         <div class="gb-sec"><h3>自动检查</h3><ul class="checks"><li v-for="c in checks" :key="c.text" :class="c.ok ? 'ok' : 'warn'"><Icon :icon="c.ok ? 'ant-design:check-circle-outlined' : 'ant-design:warning-outlined'" />{{ c.text }}</li></ul></div>
         <a-form layout="vertical"><a-form-item label="审核意见（会发给申请人）"><a-textarea v-model:value="note" :rows="3" /></a-form-item></a-form>
@@ -51,6 +53,7 @@
           <a-form-item label="经度"><a-input-number v-model:value="form.lng" :precision="6" style="width: 100%" /></a-form-item>
           <a-form-item label="纬度"><a-input-number v-model:value="form.lat" :precision="6" style="width: 100%" /></a-form-item>
         </div>
+        <a-form-item label="佣金比例" extra="团长按本提货点订单的商品金额拿佣金；改了只影响之后付款的订单"><a-input-number v-model:value="ratePct" :min="0" :max="30" :step="0.5" :precision="1" addon-after="%" style="width: 160px" /></a-form-item>
         <a-form-item label="冰柜" extra="没有冰柜的提货点，居民不能下冷藏 / 冷冻商品"><a-switch v-model:checked="fridge" checked-children="有" un-checked-children="没有" /></a-form-item>
       </a-form>
       <template #footer><div style="text-align: right"><a-button style="margin-right: 8px" @click="editOpen = false">取消</a-button><a-button type="primary" @click="save">保存</a-button></div></template>
@@ -103,10 +106,11 @@
 
   const editOpen = ref(false);
   const form = reactive<any>({});
+  const ratePct = computed({ get: () => Math.round(Number(form.commissionRate ?? 0.1) * 1000) / 10, set: (v) => (form.commissionRate = (Number(v || 0) / 100).toFixed(4)) });
   const fridge = computed({ get: () => form.hasFridge === 1, set: (v) => (form.hasFridge = v ? 1 : 0) });
   function edit(p) {
     Object.keys(form).forEach((k) => delete form[k]);
-    Object.assign(form, p ? { ...p } : { hasFridge: 1, openHours: '08:00-21:00', households: 0 });
+    Object.assign(form, p ? { ...p } : { hasFridge: 1, openHours: '08:00-21:00', households: 0, commissionRate: '0.1000' });
     editOpen.value = true;
   }
   async function save() { await gbApi.pointSave({ ...form }); editOpen.value = false; load(); }

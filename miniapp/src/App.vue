@@ -1,10 +1,11 @@
 <script lang="ts">
 import { onLaunch } from '@dcloudio/uni-app'
-import { syncServerTime } from '@/gb/util'
+import { loadConfig, syncServerTime } from '@/gb/util'
 
 export default {
   onLaunch() {
     syncServerTime()
+    loadConfig().catch(() => {})
   },
 }
 </script>

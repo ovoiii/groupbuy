@@ -21,13 +21,13 @@
     </view>
     <view v-if="me.leaderPoint" class="leader" @tap="go('/pages/leader/leader')">
       <view class="ic"><wd-icon name="shop" size="22px" color="#ffc24d" /></view>
-      <view style="min-width: 0; flex: 1"><view class="b">团长工作台</view><view class="s">{{ me.leaderPoint.name }} · 核销提货、到货签收</view></view>
+      <view style="min-width: 0; flex: 1"><view class="b">团长工作台</view><view class="s">{{ me.leaderPoint.name }} · 核销提货、到货签收、佣金提现</view></view>
       <view class="go">进入<wd-icon name="arrow-right" size="12px" color="#ffc24d" /></view>
     </view>
     <view class="gb-card">
       <view class="gb-row" @tap="go('/pages/coupons/coupons')"><wd-icon name="discount" size="18px" color="#535b56" /><text>我的优惠券</text><view class="v muted">{{ me.couponCount }} 张可用<wd-icon name="arrow-right" size="14px" /></view></view>
       <view class="gb-row" @tap="go('/pages/points/points')"><wd-icon name="location" size="18px" color="#535b56" /><text>我的提货点</text><view class="v muted">{{ me.defaultPoint ? me.defaultPoint.name : '去选择' }}<wd-icon name="arrow-right" size="14px" /></view></view>
-      <view v-if="!me.leaderPoint" class="gb-row" @tap="applyLeader"><wd-icon name="shop" size="18px" color="#535b56" /><text>申请当团长</text><view class="v muted">在家门口开个提货点<wd-icon name="arrow-right" size="14px" /></view></view>
+      <view v-if="!me.leaderPoint" class="gb-row" @tap="go('/pages/leader/apply')"><wd-icon name="shop" size="18px" color="#535b56" /><text>申请当团长</text><view class="v" :class="APPLY[me.applyStatus]?.[1] || 'muted'">{{ APPLY[me.applyStatus]?.[0] || '在家门口开个提货点' }}<wd-icon name="arrow-right" size="14px" color="#6b716d" /></view></view>
       <view class="gb-row" @tap="logout"><wd-icon name="logout" size="18px" color="#535b56" /><text>退出登录</text></view>
     </view>
     <view class="gb-tip">客服电话 400-000-0000（示例） · 09:00–21:00</view>
@@ -47,7 +47,7 @@ function goOrders(t: string) {
   uni.setStorageSync('gb-orders-tab', t)
   uni.switchTab({ url: '/pages/orders/orders' })
 }
-const applyLeader = () => uni.showModal({ title: '申请当团长', content: '请联系运营：在后台「团长管理」登记后，用你的手机号登录就能进团长工作台。', showCancel: false })
+const APPLY = { pending: ['审核中', 'st-wait'], rejected: ['未通过，可修改重提', 'st-rej'] }
 function logout() {
   token.clear()
   toLogin()
@@ -70,4 +70,6 @@ function logout() {
 .leader .b { font-weight: 700; }
 .leader .s { display: block; font-size: 13px; opacity: 0.75; color: #fff; align-items: flex-start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .leader .go { display: flex; align-items: center; gap: 2px; font-size: 14px; color: $mark-bright; font-weight: 600; flex: none; }
+.st-wait { color: $mark; font-size: 14px; }
+.st-rej { color: $price; font-size: 14px; }
 </style>

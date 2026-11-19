@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +15,9 @@ import org.jeecg.modules.groupbuy.config.GbAuthInterceptor;
 import org.jeecg.modules.groupbuy.config.GbProperties;
 import org.jeecg.modules.groupbuy.entity.*;
 import org.jeecg.modules.groupbuy.mapper.*;
+import org.jeecg.modules.groupbuy.service.GbCommissionService;
 import org.jeecg.modules.groupbuy.service.GbCoreService;
+import org.jeecg.modules.groupbuy.service.GbNotifyService;
 import org.jeecg.modules.groupbuy.service.GbTokenService;
 import org.jeecg.modules.groupbuy.service.GbViewService;
 import org.springframework.beans.factory.annotation.Value;
@@ -56,7 +59,11 @@ public class GbAppController {
     private final GbAftersaleMapper asMapper;
     private final GbDeliveryMapper deliveryMapper;
     private final GbCoreService core;
+    private final GbCommissionService commission;
+    private final GbCommissionMapper commMapper;
+    private final GbWithdrawMapper wdMapper;
     private final GbViewService view;
+    private final GbNotifyService notify;
 
     @Value("${jeecg.path.upload:}")
     private String uploadPath;
@@ -78,7 +85,17 @@ public class GbAppController {
     @IgnoreAuth
     @GetMapping("/config")
     public Result<?> config() {
-        return Result.OK(Map.of("devLogin", props.isDevLogin(), "payMock", props.isPayMock(), "wxLogin", props.getWx().getAppid() != null && !props.getWx().getAppid().isBlank()));
+        return Result.OK(Map.of("devLogin", props.isDevLogin(), "payMock", props.isPayMock(), "wxLogin", props.getWx().getAppid() != null && !props.getWx().getAppid().isBlank(),
+                "tmpl", notify.templates()));
+    }
+
+    /** 用户在订阅框里点了「允许」的模板，每个多 1 次发送机会 */
+    @IgnoreAuth
+    @PostMapping("/notify/subscribe")
+    public Result<?> subscribe(HttpServletRequest req, @RequestBody Map<String, Object> body) {
+        Object ids = body.get("ids");
+        if (!(ids instanceof List<?> l)) return Result.error("参数不对");
+        return Result.OK(notify.subscribe(me(req).getId(), l.stream().map(String::valueOf).toList()));
     }
 
     /** 微信登录：wx.login 拿到的 code 换 openid */
@@ -128,6 +145,8 @@ public class GbAppController {
         p.put("defaultPoint", dp != null && "ok".equals(dp.getStatus()) ? pointVo(dp, null, null) : null);
         GbPoint lp = myPoint(m);
         p.put("leaderPoint", lp == null ? null : pointVo(lp, null, null));
+        GbPoint ap = lp == null ? latestApply(m) : null;
+        p.put("applyStatus", ap == null ? null : ap.getStatus());
         return p;
     }
 
@@ -422,6 +441,8 @@ public class GbAppController {
             batches.add(b);
         }
         out.put("batches", batches);
+        GbLeaderAccount acc = commission.account(pt.getId());
+        out.put("income", Map.of("balance", acc.getBalance(), "estimate", money(commission.estimate(pt.getId()).getOrDefault(pt.getId(), BigDecimal.ZERO))));
         GbPeriod live = core.livePeriod();
         if (live != null) {
             List<GbOrder> os = orderMapper.selectList(new LambdaQueryWrapper<GbOrder>().eq(GbOrder::getPeriodId, live.getId()).eq(GbOrder::getPointId, pt.getId()).notIn(GbOrder::getStatus, S_UNPAID, S_CLOSED));
@@ -474,6 +495,7 @@ public class GbAppController {
         GbOrder o = orderMapper.selectById(body.get("orderId"));
         if (o == null || !o.getPointId().equals(pt.getId()) || !S_ARRIVED.equals(o.getStatus())) return Result.error("只有待提货的订单可以提醒");
         orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, o.getId()).setSql("remind_count = remind_count + 1"));
+        notify.pickup(o);
         return Result.OK("已给顾客发取货提醒");
     }
 
@@ -485,5 +507,206 @@ public class GbAppController {
         if (d == null || !d.getPointId().equals(pt.getId())) return Result.error("不是本提货点的配送单");
         core.sign(d.getId(), body.get("shortNote"));
         return Result.OK("已签收，顾客会收到到货通知");
+    }
+
+    // ================================================================ 团长佣金
+
+    /** 我的佣金：可提现、审核中、待结算预估、累计；审核中的那笔提现；上次的收款账户（预填用） */
+    @IgnoreAuth
+    @GetMapping("/leader/income")
+    public Result<?> leaderIncome(HttpServletRequest req) {
+        GbPoint pt = mustLeader(req);
+        GbLeaderAccount a = commission.account(pt.getId());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("pointName", pt.getName());
+        out.put("rate", pt.getCommissionRate());
+        out.put("balance", a.getBalance());
+        out.put("frozen", a.getFrozen());
+        out.put("totalIncome", a.getTotalIncome());
+        out.put("totalWithdrawn", a.getTotalWithdrawn());
+        out.put("estimate", money(commission.estimate(pt.getId()).getOrDefault(pt.getId(), BigDecimal.ZERO)));
+        out.put("withdrawMin", props.getWithdrawMin());
+        out.put("settleHours", props.getAftersaleWindowHours());
+        GbWithdraw p = commission.pendingWithdraw(pt.getId());
+        out.put("pending", p == null ? null : withdrawVo(p));
+        GbWithdraw last = wdMapper.selectOne(new LambdaQueryWrapper<GbWithdraw>().eq(GbWithdraw::getPointId, pt.getId()).orderByDesc(GbWithdraw::getCreateTime).last("limit 1"));
+        if (last != null) {
+            Map<String, Object> acc = new LinkedHashMap<>();
+            acc.put("method", last.getMethod());
+            acc.put("accountName", last.getAccountName());
+            acc.put("accountNo", last.getAccountNo());
+            acc.put("bankName", last.getBankName());
+            out.put("lastAccount", acc);
+        }
+        return Result.OK(out);
+    }
+
+    private Map<String, Object> withdrawVo(GbWithdraw w) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", w.getId());
+        m.put("wdNo", w.getWdNo());
+        m.put("amount", w.getAmount());
+        m.put("method", w.getMethod());
+        m.put("account", "bank".equals(w.getMethod()) ? w.getBankName() + " " + GbCommissionService.maskCard(w.getAccountNo()) : "微信零钱");
+        m.put("accountName", w.getAccountName());
+        m.put("status", w.getStatus());
+        m.put("reply", w.getReply());
+        m.put("createTime", w.getCreateTime());
+        m.put("handleTime", w.getHandleTime());
+        return m;
+    }
+
+    /** 佣金入账明细（type=in）或提现记录（type=out），分页 */
+    @IgnoreAuth
+    @GetMapping("/leader/income/list")
+    public Result<?> leaderIncomeList(HttpServletRequest req, @RequestParam(defaultValue = "in") String type, @RequestParam(defaultValue = "1") int pageNo) {
+        GbPoint pt = mustLeader(req);
+        if ("out".equals(type)) {
+            Page<GbWithdraw> pg = wdMapper.selectPage(new Page<>(pageNo, 20), new LambdaQueryWrapper<GbWithdraw>().eq(GbWithdraw::getPointId, pt.getId()).orderByDesc(GbWithdraw::getCreateTime));
+            return Result.OK(Map.of("records", pg.getRecords().stream().map(this::withdrawVo).toList(), "total", pg.getTotal()));
+        }
+        Page<GbCommission> pg = commMapper.selectPage(new Page<>(pageNo, 20), new LambdaQueryWrapper<GbCommission>().eq(GbCommission::getPointId, pt.getId())
+                .orderByDesc(GbCommission::getSettleTime).orderByDesc(GbCommission::getPickupAt));
+        List<Map<String, Object>> rows = pg.getRecords().stream().map(c -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", c.getId());
+            m.put("orderNo", c.getOrderNo());
+            m.put("buyerName", c.getBuyerName());
+            m.put("goodsAmount", c.getGoodsAmount());
+            m.put("baseAmount", c.getBaseAmount());
+            m.put("refunded", c.getRefundAmount() != null && c.getRefundAmount().signum() > 0);
+            m.put("rate", c.getRate());
+            m.put("amount", c.getAmount());
+            m.put("settleTime", c.getSettleTime());
+            return m;
+        }).toList();
+        return Result.OK(Map.of("records", rows, "total", pg.getTotal()));
+    }
+
+    @IgnoreAuth
+    @PostMapping("/leader/withdraw")
+    public Result<?> leaderWithdraw(HttpServletRequest req, @RequestBody Map<String, Object> body) {
+        GbMember m = me(req);
+        GbPoint pt = myPoint(m);
+        if (pt == null) return Result.error("你还不是团长");
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(String.valueOf(body.get("amount")).trim());
+        } catch (Exception e) {
+            return Result.error("提现金额填得不对");
+        }
+        GbWithdraw w = commission.apply(pt, m.getId(), amount, (String) body.get("method"), (String) body.get("accountName"), (String) body.get("accountNo"), (String) body.get("bankName"));
+        return Result.OK("已提交，1–3 个工作日到账", withdrawVo(w));
+    }
+
+    // ================================================================ 团长入驻申请
+
+    /** 我最近一次的入驻申请（没有返回 null）；已经是团长时 isLeader=true */
+    @IgnoreAuth
+    @GetMapping("/leader/apply")
+    public Result<?> myApply(HttpServletRequest req) {
+        GbMember m = me(req);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("isLeader", myPoint(m) != null);
+        GbPoint a = latestApply(m);
+        out.put("apply", a == null ? null : applyVo(a));
+        out.put("phone", m.getPhone());
+        out.put("nickname", m.getNickname());
+        return Result.OK(out);
+    }
+
+    private GbPoint latestApply(GbMember m) {
+        return pointMapper.selectOne(new LambdaQueryWrapper<GbPoint>().eq(GbPoint::getLeaderMemberId, m.getId()).orderByDesc(GbPoint::getCreateTime).last("limit 1"));
+    }
+
+    private Map<String, Object> applyVo(GbPoint p) {
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("id", p.getId());
+        v.put("status", p.getStatus());
+        v.put("statusNote", p.getStatusNote());
+        v.put("name", p.getName());
+        v.put("address", p.getAddress());
+        v.put("lat", p.getLat());
+        v.put("lng", p.getLng());
+        v.put("leaderName", p.getLeaderName());
+        v.put("leaderPhone", p.getLeaderPhone());
+        v.put("households", p.getHouseholds());
+        v.put("hasFridge", p.getHasFridge() != null && p.getHasFridge() == 1);
+        v.put("openHours", p.getOpenHours());
+        v.put("applyNote", p.getApplyNote());
+        v.put("createTime", p.getCreateTime());
+        v.put("updateTime", p.getUpdateTime());
+        return v;
+    }
+
+    /** 提交入驻申请。被拒后可以改了重新提交（覆盖原申请，回到待审核） */
+    @IgnoreAuth
+    @PostMapping("/leader/apply")
+    public Result<?> apply(HttpServletRequest req, @RequestBody Map<String, Object> body) {
+        GbMember m = me(req);
+        if (myPoint(m) != null) return Result.error("你已经是团长了");
+        GbPoint last = latestApply(m);
+        if (last != null && "pending".equals(last.getStatus())) return Result.error("申请正在审核，运营会尽快联系你");
+        if (last != null && List.of("ok", "paused").contains(last.getStatus())) return Result.error("你已经有提货点了，有问题请联系运营");
+
+        String name = str(body.get("name")), address = str(body.get("address")), leaderName = str(body.get("leaderName")),
+                phone = str(body.get("leaderPhone")), openHours = str(body.get("openHours")), note = str(body.get("applyNote"));
+        if (name.isEmpty() || name.length() > 32) return Result.error("提货点名称要填，32 个字以内，如「幸福里 3 号楼便利店」");
+        if (address.length() < 5 || address.length() > 100) return Result.error("把地址写清楚，到楼栋门牌");
+        if (leaderName.isEmpty() || leaderName.length() > 16) return Result.error("填一下你的真实姓名");
+        if (!phone.matches("1\\d{10}")) return Result.error("手机号是 11 位数字");
+        if (!openHours.isEmpty() && !openHours.matches("([01]\\d|2[0-3]):[0-5]\\d-([01]\\d|2[0-3]):[0-5]\\d")) return Result.error("营业时间格式像 08:00-21:00");
+        if (note.length() > 200) return Result.error("补充说明 200 个字以内");
+        int households;
+        try {
+            households = body.get("households") == null || str(body.get("households")).isEmpty() ? 0 : Integer.parseInt(str(body.get("households")));
+        } catch (NumberFormatException e) {
+            return Result.error("覆盖户数填数字");
+        }
+        if (households < 0 || households > 100000) return Result.error("覆盖户数填得不对");
+        BigDecimal lat = dec(body.get("lat")), lng = dec(body.get("lng"));
+        if (lat != null && (lat.abs().compareTo(BigDecimal.valueOf(90)) > 0 || lng == null || lng.abs().compareTo(BigDecimal.valueOf(180)) > 0)) { lat = null; lng = null; }
+        // 这个手机号已经是别的提货点的团长 / 正在申请
+        long used = pointMapper.selectCount(new LambdaQueryWrapper<GbPoint>().eq(GbPoint::getLeaderPhone, phone).in(GbPoint::getStatus, "ok", "paused", "pending")
+                .ne(last != null, GbPoint::getId, last == null ? "" : last.getId()));
+        if (used > 0) return Result.error("这个手机号已经登记过提货点了，有问题请联系运营");
+
+        GbPoint p = last != null ? last : new GbPoint();
+        p.setName(name);
+        p.setAddress(address);
+        p.setLat(lat);
+        p.setLng(lng);
+        p.setLeaderName(leaderName);
+        p.setLeaderPhone(phone);
+        p.setLeaderMemberId(m.getId());
+        p.setHouseholds(households);
+        p.setHasFridge(Boolean.TRUE.equals(body.get("hasFridge")) || "1".equals(str(body.get("hasFridge"))) ? 1 : 0);
+        p.setOpenHours(openHours.isEmpty() ? "08:00-21:00" : openHours);
+        p.setApplyNote(note.isEmpty() ? null : note);
+        p.setStatus("pending");
+        p.setStatusNote(null);
+        if (last == null) {
+            p.setCommissionRate(new BigDecimal("0.10"));
+            pointMapper.insert(p);
+        } else {
+            p.setCreateTime(new Date());
+            pointMapper.updateById(p);
+            pointMapper.update(null, new LambdaUpdateWrapper<GbPoint>().eq(GbPoint::getId, p.getId()).set(GbPoint::getStatusNote, null).set(lat == null, GbPoint::getLat, null).set(lng == null, GbPoint::getLng, null)
+                    .set(note.isEmpty(), GbPoint::getApplyNote, null));
+        }
+        log.info("[团购] 新的团长入驻申请：{} {}", leaderName, name);
+        return Result.OK("已提交，运营会在 1–2 个工作日内电话联系你", applyVo(pointMapper.selectById(p.getId())));
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : String.valueOf(o).trim();
+    }
+
+    private static BigDecimal dec(Object o) {
+        try {
+            return o == null || str(o).isEmpty() ? null : new BigDecimal(str(o)).setScale(6, java.math.RoundingMode.HALF_UP);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

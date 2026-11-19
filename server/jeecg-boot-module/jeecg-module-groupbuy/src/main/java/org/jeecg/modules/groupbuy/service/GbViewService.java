@@ -93,6 +93,8 @@ public class GbViewService {
                 m.put("leaderName", pt.getLeaderName());
                 m.put("leaderPhone", maskPhone ? mask(pt.getLeaderPhone()) : pt.getLeaderPhone());
                 m.put("openHours", pt.getOpenHours());
+                m.put("pointLat", pt.getLat());
+                m.put("pointLng", pt.getLng());
             }
             if (pd != null) {
                 m.put("periodId", pd.getId());

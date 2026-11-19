@@ -28,6 +28,8 @@ public class GbOrder implements Serializable {
     private BigDecimal refundAmount;
     private String userCouponId;
     private String couponName;
+    /** 付款时记下的团长佣金比例；为空按提货点当前比例 */
+    private BigDecimal commissionRate;
     /** unpaid 待付款 / paid 待截单 / shipping 配送中 / arrived 待提货 / done 已提货 / closed 已关闭 */
     private String status;
     /** none / applying 售后中 / refunded 已退款 / rejected 已驳回 */

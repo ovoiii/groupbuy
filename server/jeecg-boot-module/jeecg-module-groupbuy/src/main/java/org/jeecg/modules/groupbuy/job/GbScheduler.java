@@ -10,6 +10,7 @@ import org.jeecg.modules.groupbuy.entity.GbPeriod;
 import org.jeecg.modules.groupbuy.mapper.GbAftersaleMapper;
 import org.jeecg.modules.groupbuy.mapper.GbOrderMapper;
 import org.jeecg.modules.groupbuy.mapper.GbPeriodMapper;
+import org.jeecg.modules.groupbuy.service.GbCommissionService;
 import org.jeecg.modules.groupbuy.service.GbCoreService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -17,7 +18,7 @@ import org.springframework.stereotype.Component;
 import java.util.Date;
 
 /**
- * 每 30 秒推进一次：开团、截单、开始自提、结束；关闭超时未付款；售后超时自动同意。
+ * 每 30 秒推进一次：开团、截单、开始自提、结束；关闭超时未付款；售后超时自动同意；团长佣金到期入账。
  * 单机部署直接用；多实例部署时需要加分布式锁（或改用 JeecgBoot 的 Quartz 集群任务）。
  */
 @Slf4j
@@ -28,6 +29,7 @@ public class GbScheduler {
     private final GbOrderMapper orderMapper;
     private final GbAftersaleMapper asMapper;
     private final GbCoreService core;
+    private final GbCommissionService commission;
 
     @Scheduled(initialDelay = 15_000, fixedDelay = 30_000)
     public void tick() {
@@ -47,6 +49,12 @@ public class GbScheduler {
                 core.approveAftersale(a.getId(), null, "平台", "超过处理时限，系统已自动同意退款。", "system");
         } catch (Exception e) {
             log.error("[团购] 定时任务出错", e);
+        }
+        try {
+            // 提货满售后期的订单，团长佣金入账
+            commission.settleDue();
+        } catch (Exception e) {
+            log.error("[团购] 佣金结算出错", e);
         }
     }
 }

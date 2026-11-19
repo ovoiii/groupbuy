@@ -60,7 +60,7 @@
 </template>
 <script lang="ts" setup>
 import qrcode from 'qrcode-generator'
-import { api, post, img, md, toast } from '@/gb/util'
+import { api, post, img, md, toast, subscribe, openMap } from '@/gb/util'
 import Pickup from '@/gb/Pickup.vue'
 
 const o = ref<any>(null)
@@ -80,15 +80,13 @@ const qr = computed(() => {
 async function load() { o.value = await api('/order/detail', { id }) }
 onLoad((q: any) => { id = q.id; if (q.paid) toast('支付成功') })
 onShow(() => id && load())
-async function pay() { await post('/order/pay', { id }); toast('支付成功'); load() }
+async function pay() { await subscribe(['arrived', 'pickup']); await post('/order/pay', { id }); toast('支付成功'); load() }
 function cancel() {
   uni.showModal({ title: '取消这个订单？', content: o.value.payTime ? `会原路退回 ¥${o.value.payAmount}` : '', success: async (r) => { if (r.confirm) { await post('/order/cancel', { id }); toast('已取消'); load() } } })
 }
 const aftersale = () => uni.navigateTo({ url: `/pages/aftersale/aftersale?id=${id}` })
 const call = () => uni.makePhoneCall({ phoneNumber: o.value.leaderPhone, fail: () => {} })
-function nav() {
-  toast(o.value.pointAddress)
-}
+const nav = () => openMap({ lat: o.value.pointLat, lng: o.value.pointLng, name: o.value.pointName, address: o.value.pointAddress })
 </script>
 <style lang="scss" scoped>
 .top { background: $primary; color: #fff; padding: 16px 16px 64px; }

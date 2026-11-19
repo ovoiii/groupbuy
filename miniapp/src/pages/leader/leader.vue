@@ -1,7 +1,7 @@
 <route lang="json5">
 { style: { navigationBarTitleText: '团长工作台', navigationBarBackgroundColor: '#13221A', navigationBarTextStyle: 'white', enablePullDownRefresh: true } }
 </route>
-<!-- 团长工作台：今天已取 / 待取进度、扫码核销、到货签收和短少登记、按手机尾号找订单、超时提醒、本期预售 -->
+<!-- 团长工作台：今天已取 / 待取进度、扫码核销、我的佣金、到货签收和短少登记、按手机尾号找订单、超时提醒、本期预售 -->
 <template>
   <view v-if="d">
     <view class="top">
@@ -17,6 +17,12 @@
     <view class="scan">
       <view class="a1" @tap="scan"><wd-icon name="scan" size="28px" color="#fff" />扫码核销</view>
       <view class="a2" @tap="go('/pages/leader/verify')"><wd-icon name="edit" size="26px" color="#1d231f" />输入提货码</view>
+    </view>
+
+    <view v-if="d.income" class="gb-card inc" @tap="go('/pages/leader/income')">
+      <view class="ic"><wd-icon name="wallet" size="20px" color="#a06500" /></view>
+      <view style="flex: 1; min-width: 0"><view class="b">我的佣金</view><view class="s">可提现 <text class="v">¥{{ Number(d.income.balance).toFixed(2) }}</text> · 待结算 ¥{{ Number(d.income.estimate).toFixed(2) }}</view></view>
+      <view class="go">提现<wd-icon name="arrow-right" size="12px" /></view>
     </view>
 
     <view v-for="b in d.batches" :key="b.delivery.id" class="gb-card">
@@ -60,7 +66,7 @@
   </view>
 </template>
 <script lang="ts" setup>
-import { api, post, dayTime, md, toast } from '@/gb/util'
+import { api, post, dayTime, md, toast, subscribe } from '@/gb/util'
 import Cutoff from '@/gb/Cutoff.vue'
 const DS = { sorting: '仓库分拣中', shipping: '配送中，马上到', signed: '已签收' }
 const d = ref<any>(null)
@@ -99,6 +105,7 @@ async function remind(o) {
 }
 function openSign(b) { signing = b; shortNote.value = ''; signOpen.value = true }
 async function doSign() {
+  await subscribe(['ship']) // 订阅下一次发车通知
   await post('/leader/sign', { deliveryId: signing.delivery.id, shortNote: shortNote.value })
   signOpen.value = false
   toast('已签收')
@@ -118,6 +125,12 @@ async function doSign() {
 .scan .a1, .scan .a2 { flex: 1; height: 76px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 17px; font-weight: 700; }
 .a1 { background: $primary; color: #fff; }
 .a2 { background: #fff; color: $text; }
+.inc { display: flex; gap: 12px; align-items: center; padding: 14px; }
+.inc .ic { width: 40px; height: 40px; border-radius: 10px; background: $mark-soft; display: flex; align-items: center; justify-content: center; flex: none; }
+.inc .b { font-size: 15px; font-weight: 600; }
+.inc .s { font-size: 13px; color: $text-2; }
+.inc .v { color: $mark; font-weight: 700; }
+.inc .go { display: flex; align-items: center; gap: 2px; font-size: 14px; color: $text-3; flex: none; }
 .recv { display: flex; gap: 12px; align-items: center; padding: 14px; }
 .recv .ic { width: 40px; height: 40px; border-radius: 10px; background: $primary-soft; display: flex; align-items: center; justify-content: center; flex: none; }
 .recv .b { font-size: 15px; font-weight: 600; }

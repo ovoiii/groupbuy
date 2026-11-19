@@ -28,7 +28,7 @@
   </view>
 </template>
 <script lang="ts" setup>
-import { api, post, img, md, cart, token, toLogin, toast } from '@/gb/util'
+import { api, post, img, md, cart, token, toLogin, toast, subscribe } from '@/gb/util'
 import Pickup from '@/gb/Pickup.vue'
 const TABS = [['', '全部'], ['unpaid', '待付款'], ['paid', '待截单'], ['arrived', '待提货'], ['refund', '售后']]
 const st = ref('')
@@ -60,6 +60,7 @@ function cancel(o) {
   uni.showModal({ title: '取消这个订单？', content: o.status === 'paid' ? `会原路退回 ¥${o.payAmount}` : '', success: async (r) => { if (r.confirm) { await post('/order/cancel', { id: o.id }); toast('已取消'); load() } } })
 }
 async function pay(o) {
+  await subscribe(['arrived', 'pickup'])
   await post('/order/pay', { id: o.id })
   uni.navigateTo({ url: `/pages/order/order?id=${o.id}&paid=1` })
 }

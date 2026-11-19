@@ -39,7 +39,7 @@
   </view>
 </template>
 <script lang="ts" setup>
-import { api, post, img, cart, pointStore, toast } from '@/gb/util'
+import { api, post, img, cart, pointStore, toast, loadConfig, subscribe } from '@/gb/util'
 import Price from '@/gb/Price.vue'
 import Pickup from '@/gb/Pickup.vue'
 
@@ -57,12 +57,13 @@ const usableCount = computed(() => pv.value.coupons.filter((c) => c.usable).leng
 
 async function preview() { pv.value = await api('/order/preview', { items, userCouponId: chosen }, 'POST') }
 onLoad(async () => {
-  ;[me.value, cfg.value] = await Promise.all([api('/me'), api('/config')])
+  ;[me.value, cfg.value] = await Promise.all([api('/me'), loadConfig()])
   preview().catch(() => setTimeout(() => uni.navigateBack(), 1500))
 })
 function pick(id: string) { chosen = id; couponOpen.value = false; preview() }
 
 async function submit() {
+  await subscribe(['arrived', 'pickup'])
   paying.value = true
   try {
     const o = await post('/order/create', { pointId: point.id, items, userCouponId: chosen || pv.value.userCouponId || 'none', remark: remark.value })

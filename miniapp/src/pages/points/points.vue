@@ -13,14 +13,17 @@
           <view class="a">{{ p.address }}</view>
           <view class="a">团长 {{ p.leaderName }} · {{ p.openHours }} 可取{{ p.hasFridge ? '' : ' · 没有冰柜，冷藏商品不能选' }}</view>
         </view>
-        <text v-if="p.km != null" class="km">{{ p.km < 1 ? Math.round(p.km * 1000) + 'm' : p.km.toFixed(1) + 'km' }}</text>
+        <view class="nav" @tap.stop="openMap(p)">
+          <wd-icon name="location" size="18px" color="#078149" />
+          <text>{{ p.km == null ? '导航' : p.km < 1 ? Math.round(p.km * 1000) + 'm' : p.km.toFixed(1) + 'km' }}</text>
+        </view>
       </view>
     </view>
     <view class="gb-tip">只显示正在开团的提货点。想在自己小区开一个？到「我的 → 申请当团长」</view>
   </view>
 </template>
 <script lang="ts" setup>
-import { api, post, pointStore, toast } from '@/gb/util'
+import { api, post, pointStore, toast, openMap } from '@/gb/util'
 const list = ref<any[]>([])
 const cur = ref(pointStore.get()?.id)
 async function load(lat?: number, lng?: number) {
@@ -44,5 +47,5 @@ async function choose(p) {
 .m { flex: 1; min-width: 0; }
 .n { font-size: 16px; font-weight: 600; }
 .a { font-size: 13px; color: $text-2; margin-top: 2px; }
-.km { font-size: 13px; color: $text-3; }
+.nav { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 44px; padding: 2px 0 2px 8px; border-left: 1px solid $line; font-size: 12px; color: $primary; }
 </style>

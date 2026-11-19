@@ -29,7 +29,7 @@
   </view>
 </template>
 <script lang="ts" setup>
-import { api, post, img, toast, upload } from '@/gb/util'
+import { api, post, img, toast, upload, subscribe } from '@/gb/util'
 import Price from '@/gb/Price.vue'
 const REASONS = ['质量问题', '少件', '破损', '发错货', '没来得及取']
 const o = ref<any>(null)
@@ -49,6 +49,7 @@ function choose() {
 async function submit() {
   if (!sel.value.length) return toast('先选有问题的商品')
   if ((type.value === '质量问题' || type.value === '破损') && !photos.value.length) return toast('请拍一张照片')
+  await subscribe(['aftersale'])
   busy.value = true
   try {
     const paths: string[] = []
