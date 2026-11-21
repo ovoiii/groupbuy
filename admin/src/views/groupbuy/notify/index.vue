@@ -1,7 +1,7 @@
 <!-- 消息通知：微信订阅消息的配置情况和发送记录。没配模板时只记录（mock），在这里能看到会发什么 -->
 <template>
   <div class="gb-page">
-    <div class="gb-head"><div><h1>消息通知</h1><p>到货、取货提醒、售后结果、发车、入驻审核、提现结果会给居民和团长发微信订阅消息。用户每点一次「允许」只能收一条，这是微信的规则。</p></div></div>
+    <div class="gb-head"><div><h1>消息通知</h1><p>到货、取货提醒、售后结果、发车、入驻审核、提现结果会给居民和团长发微信订阅消息。用户每点一次「允许」只能收一条，这是微信的规则。网络或微信那边临时出错的，系统会在 1、5、30 分钟后自动重发。</p></div></div>
 
     <section class="gb-card">
       <div class="gb-toolbar">
@@ -33,7 +33,9 @@
           <template v-else-if="column.key === 'scene'">{{ r.sceneName }}</template>
           <template v-else-if="column.key === 'who'"><div class="gb-cell"><span>{{ r.nickname || '—' }}</span><span class="sub">{{ r.phone }}</span></div></template>
           <template v-else-if="column.key === 'content'"><div class="content">{{ text(r.l.content) }}</div></template>
-          <template v-else-if="column.key === 'status'"><span class="gb-tag" :class="ST[r.l.status]?.[1]">{{ ST[r.l.status]?.[0] || r.l.status }}</span><div v-if="r.l.note" class="gb-muted" style="font-size: 12px; margin-top: 2px">{{ r.l.note }}</div></template>
+          <template v-else-if="column.key === 'status'"><span class="gb-tag" :class="ST[r.l.status]?.[1]">{{ ST[r.l.status]?.[0] || r.l.status }}</span><div v-if="r.l.note" class="gb-muted" style="font-size: 12px; margin-top: 2px">{{ r.l.note }}</div>
+            <div v-if="r.l.status === 'retry' && r.l.nextRetryTime" class="gb-muted" style="font-size: 12px">{{ md(r.l.nextRetryTime) }} 重发</div></template>
+          <template v-else-if="column.key === 'act'"><a v-if="r.canResend" :class="{ dis: busy === r.l.id }" @click="resend(r)">{{ r.l.status === 'retry' ? '立即重发' : '重发' }}</a></template>
         </template>
         <template #emptyText><div class="gb-empty"><b>还没有消息</b><span>团长签收到货、处理售后、审核入驻和提现时会产生</span></div></template>
       </a-table>
@@ -43,11 +45,11 @@
 
 <script lang="ts" setup>
   import { computed, onMounted, ref } from 'vue';
-  import { Segmented as ASegmented } from 'ant-design-vue';
+  import { Modal, Segmented as ASegmented } from 'ant-design-vue';
   import { gbApi, md } from '../api';
 
   defineOptions({ name: 'GbNotify' });
-  const ST = { sent: ['已发送', 'ok'], mock: ['只记录', 'pri'], skipped: ['没发', ''], failed: ['失败', 'bad'] };
+  const ST = { sent: ['已发送', 'ok'], mock: ['只记录', 'pri'], skipped: ['没发', ''], retry: ['等待重发', 'warn'], failed: ['失败', 'bad'] };
   const WHO = { arrived: '团长签收后发给这批订单的居民', pickup: '团长点「提醒取货」时发给居民', aftersale: '售后同意、驳回或平台取消退款时发给居民',
     ship: '配送单发车时发给团长', apply: '入驻申请审核后发给申请人', withdraw: '提现打款或驳回后发给团长' };
   const NAMES = { orderNo: '订单', point: '提货点', address: '地址', code: '提货码', goods: '商品', time: '时间', hours: '营业', tip: '提示', result: '结果',
@@ -56,7 +58,7 @@
   const rows = ref<any[]>([]), counts = ref<any>({}), total = ref(0), pageNo = ref(1);
   const scenes = ref<any[]>([]), wxReady = ref(false);
   const loading = ref(false);
-  const opts = computed(() => [['', '全部'], ['sent', '已发送'], ['mock', '只记录'], ['skipped', '没发'], ['failed', '失败']].map(([v, l]) => ({ value: v, label: `${l} ${counts.value[v] ?? ''}` })));
+  const opts = computed(() => [['', '全部'], ['sent', '已发送'], ['mock', '只记录'], ['skipped', '没发'], ['retry', '等待重发'], ['failed', '失败']].map(([v, l]) => ({ value: v, label: `${l} ${counts.value[v] ?? ''}` })));
   const sceneOpts = computed(() => [{ value: '', label: '全部场景' }, ...scenes.value.map((s) => ({ value: s.scene, label: s.name }))]);
 
   /** 内容 JSON → 「提货点：xx · 提货码：xx」；配了模板字段的直接显示字段值 */
@@ -81,12 +83,29 @@
   }
   onMounted(() => load(1));
 
+  const busy = ref('');
+  function resend(r) {
+    const go = async () => {
+      busy.value = r.l.id;
+      try {
+        await gbApi.notifyResend({ id: r.l.id }); // 结果提示由请求封装弹出
+      } finally {
+        busy.value = '';
+        load(pageNo.value);
+      }
+    };
+    if (r.l.status === 'retry') return go();
+    // 失败的要重新用掉用户一次订阅次数
+    Modal.confirm({ title: '重发这条消息？', content: '会用掉用户一次订阅次数；用户没有次数了就发不了。', okText: '重发', onOk: go });
+  }
+
   const cols = [
     { title: '时间', key: 'time', width: 110 },
     { title: '场景', key: 'scene', width: 110 },
     { title: '接收人', key: 'who', width: 140 },
     { title: '内容', key: 'content' },
-    { title: '状态', key: 'status', width: 220 },
+    { title: '状态', key: 'status', width: 240 },
+    { title: '', key: 'act', width: 80 },
   ];
 </script>
 
@@ -96,5 +115,6 @@
   .sc .t { font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .sc .d { font-size: 12px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mono { font-family: Consolas, monospace; color: var(--brand-text-2); }
+  .dis { pointer-events: none; opacity: 0.5; }
   .content { font-size: 13px; color: var(--brand-text-2); line-height: 1.6; }
 </style>

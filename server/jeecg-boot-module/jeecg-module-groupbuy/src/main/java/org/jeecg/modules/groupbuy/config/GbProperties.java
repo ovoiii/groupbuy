@@ -36,6 +36,10 @@ public class GbProperties {
     private Notify notify = new Notify();
     /** 微信支付 */
     private Pay pay = new Pay();
+    /** 短信验证码登录 */
+    private Sms sms = new Sms();
+    /** 小程序 H5 版地址（如 https://shop.example.com/h5），没配小程序 AppID 时海报上的二维码指到这里；都没配就不画二维码 */
+    private String h5Base;
 
     @Data
     public static class Wx {
@@ -62,6 +66,43 @@ public class GbProperties {
         private String publicKeyPath;
         /** 后端对外地址，用来拼支付 / 退款结果通知地址，必须是 https，如 https://shop.example.com/jeecg-boot */
         private String notifyBase;
+        /** 团长提现到微信零钱用「商家转账」自动打款（要在商户平台开通商家转账）；false 就只能线下打款后登记 */
+        private boolean transferEnabled = true;
+        /** 商家转账的转账场景 ID，商户平台「商家转账 → 场景管理」里开通的；1005 = 佣金报酬 */
+        private String transferSceneId = "1005";
+        /** 用户收款时看到的收款感知，要和场景匹配，1005 场景可选「劳务报酬」「报销款」等 */
+        private String transferPerception = "劳务报酬";
+        /** 转账备注，用户在微信账单里能看到，最多 32 个字 */
+        private String transferRemark = "邻里鲜团长佣金提现";
+        /** 转账场景报备信息（1005 佣金报酬场景要报）：岗位类型 */
+        private String transferPostType = "社区团购团长";
+        /** 转账场景报备信息：报酬说明 */
+        private String transferPayDesc = "团购订单佣金";
+        /** 微信支付接口地址，只有商家转账用，一般不用改（测试时可以指到本地模拟服务） */
+        private String apiBase = "https://api.mch.weixin.qq.com";
+    }
+
+    /** 短信验证码。provider：mock 只记日志不发（开发用）/ aliyun 阿里云短信 / off 关掉短信登录 */
+    @Data
+    public static class Sms {
+        private String provider = "mock";
+        /** 阿里云 AccessKey（建议只授权短信发送的 RAM 子账号） */
+        private String accessKeyId;
+        private String accessKeySecret;
+        /** 短信签名名称，如「邻里鲜」 */
+        private String signName;
+        /** 验证码模板 CODE，模板内容要有 ${code} 变量，如 SMS_123456789 */
+        private String templateCode;
+        /** 阿里云短信接口域名，一般不用改（测试时可以指到本地模拟服务，如 127.0.0.1:18080） */
+        private String endpoint = "dysmsapi.aliyuncs.com";
+        /** 验证码有效分钟数 */
+        private int codeMinutes = 5;
+        /** 同一个手机号两次发送至少间隔多少秒 */
+        private int intervalSeconds = 60;
+        /** 同一个手机号每天最多发几条 */
+        private int perPhoneDaily = 10;
+        /** 同一个 IP 每小时最多发几条（防刷） */
+        private int perIpHourly = 20;
     }
 
     @Data

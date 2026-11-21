@@ -20,7 +20,7 @@
         <view class="f"><text class="k">卡号</text><input v-model="accountNo" type="number" placeholder="银行卡号" maxlength="23" /></view>
         <view class="f"><text class="k">开户行</text><input v-model="bankName" placeholder="如：工商银行" maxlength="20" /></view>
       </template>
-      <view v-else class="gb-tip" style="text-align: left; padding: 4px 14px 14px">打到你现在登录小程序的这个微信，收款人姓名要和微信实名一致。</view>
+      <view v-else class="gb-tip" style="text-align: left; padding: 4px 14px 14px">打到你现在登录小程序的这个微信，收款人姓名要和微信实名一致。平台打款后，到「我的佣金」点「确认收款」就到账。</view>
     </view>
     <view style="padding: 4px 12px 0"><button class="btn pri block" :disabled="!ok || busy" @tap="submit">提交申请</button></view>
     <view class="gb-tip">单笔最少 {{ d.withdrawMin }} 元，平台审核后 1–3 个工作日到账。<br />收款人必须是团长本人，姓名对不上会被退回。</view>

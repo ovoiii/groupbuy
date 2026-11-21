@@ -352,7 +352,8 @@ public class GbDemoSeeder implements ApplicationRunner {
         o.setRefundAmount(BigDecimal.ZERO);
         o.setStatus(status); o.setAfterStatus("none"); o.setRemindCount(0);
         o.setPayExpireTime(new Date(created.getTime() + 15 * 60_000L));
-        if (!S_UNPAID.equals(status)) { o.setPayTime(new Date(created.getTime() + 40_000L)); o.setPickupCode(core.newPickupCode(p.getId())); }
+        // 演示订单都是「模拟支付」付的：退款时不去调微信
+        if (!S_UNPAID.equals(status)) { o.setPayTime(new Date(created.getTime() + 40_000L)); o.setPayChannel("mock"); o.setPickupCode(core.newPickupCode(p.getId())); }
         if (S_DONE.equals(status)) o.setPickupAt(new Date(p.getPickupTime().getTime() + (long) (rnd.nextDouble() * 5 * 3600_000L)));
         o.setCreateTime(created);
         orderMapper.insert(o);

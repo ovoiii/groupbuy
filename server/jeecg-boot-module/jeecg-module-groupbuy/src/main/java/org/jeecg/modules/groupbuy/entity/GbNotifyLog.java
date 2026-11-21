@@ -20,11 +20,22 @@ public class GbNotifyLog implements Serializable {
     /** 订单 / 配送单 / 提货点 / 提现单 id */
     private String bizId;
     private String templateId;
-    /** sent 已发送 / mock 只记录（没配模板或 AppID）/ skipped 没发 / failed 失败 */
+    /** 点开消息进的页面 */
+    private String page;
+    /** sent 已发送 / mock 只记录（没配模板或 AppID）/ skipped 没发 / retry 等待重发 / failed 失败 */
     private String status;
     private String note;
     /** 消息内容 JSON */
     private String content;
+    /** 发给微信的 data 原样（重发用），不给前端 */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String payload;
+    /** 已经调用微信的次数 */
+    private Integer attempts;
+    @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date nextRetryTime;
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
     private Date createTime;
+    @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date updateTime;
 }

@@ -14,6 +14,7 @@ import org.jeecg.modules.groupbuy.service.GbCommissionService;
 import org.jeecg.modules.groupbuy.service.GbCoreService;
 import org.jeecg.modules.groupbuy.service.GbNotifyService;
 import org.jeecg.modules.groupbuy.service.GbPayService;
+import org.jeecg.modules.groupbuy.service.GbTransferService;
 import org.jeecg.modules.groupbuy.service.GbViewService;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -52,6 +53,8 @@ public class GbAdminController {
     private final GbRefundMapper refundMapper;
     private final GbPayService pay;
     private final GbMemberMapper memberMapper;
+    private final GbLeaderDeductMapper dedMapper;
+    private final GbTransferService transfer;
 
     public static final List<String> CATEGORIES = List.of("水果", "蔬菜", "肉禽蛋", "水产", "乳品烘焙", "粮油", "日用");
 
@@ -507,9 +510,11 @@ public class GbAdminController {
                 .stream().collect(Collectors.toMap(GbOrder::getId, x -> x));
         List<Map<String, Object>> orders = view.orders(new ArrayList<>(om.values()), true, false);
         Map<String, Map<String, Object>> ov = orders.stream().collect(Collectors.toMap(m -> (String) m.get("id"), m -> m));
+        Map<String, GbLeaderDeduct> ded = commission.deductsOf(list.stream().filter(a -> "团长".equals(a.getDuty())).map(GbAftersale::getId).toList());
         List<Map<String, Object>> rows = list.stream().map(a -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("aftersale", a);
+            m.put("deduct", ded.get(a.getId()));
             Map<String, Object> o = ov.get(a.getOrderId());
             m.put("order", o);
             List<String> ids = Arrays.asList(a.getItemIds().split(","));
@@ -527,9 +532,17 @@ public class GbAdminController {
 
     @PostMapping("/aftersale/approve")
     public Result<?> asApprove(@RequestBody Map<String, String> body) {
-        String amt = body.get("refundAmount");
-        core.approveAftersale(body.get("id"), amt == null || amt.isBlank() ? null : new BigDecimal(amt), body.get("duty"), body.get("reply"), me());
-        return Result.OK("已退款，钱会在 1–3 天内原路回到买家微信");
+        String amt = body.get("refundAmount"), charge = body.get("leaderCharge");
+        BigDecimal leaderCharge;
+        try {
+            leaderCharge = charge == null || charge.isBlank() ? null : new BigDecimal(charge.trim());
+        } catch (NumberFormatException e) {
+            return Result.error("团长承担的金额填得不对");
+        }
+        core.approveAftersale(body.get("id"), amt == null || amt.isBlank() ? null : new BigDecimal(amt), body.get("duty"), body.get("reply"), me(),
+                leaderCharge, body.get("chargeNote"));
+        boolean charged = "团长".equals(body.get("duty")) && (leaderCharge == null || leaderCharge.signum() > 0);
+        return Result.OK(charged ? "已退款，团长承担的部分已从佣金里扣" : "已退款，钱会在 1–3 天内原路回到买家微信");
     }
 
     @PostMapping("/aftersale/reject")
@@ -714,6 +727,7 @@ public class GbAdminController {
             m.put("totalWithdrawn", a == null ? z : a.getTotalWithdrawn());
             m.put("balance", a == null ? z : a.getBalance());
             m.put("frozen", a == null ? z : a.getFrozen());
+            m.put("totalDeducted", a == null ? z : a.getTotalDeducted());
             return m;
         }).toList();
         Map<String, Object> out = new LinkedHashMap<>();
@@ -722,6 +736,8 @@ public class GbAdminController {
         out.put("estimate", money(est.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add)));
         out.put("balance", money(accs.values().stream().map(GbLeaderAccount::getBalance).reduce(BigDecimal.ZERO, BigDecimal::add)));
         out.put("month", money(month.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add)));
+        out.put("totalDeducted", money(accs.values().stream().map(GbLeaderAccount::getTotalDeducted).reduce(BigDecimal.ZERO, BigDecimal::add)));
+        out.put("owing", money(accs.values().stream().map(GbLeaderAccount::getBalance).filter(b -> b.signum() < 0).reduce(BigDecimal.ZERO, BigDecimal::add).negate()));
         List<GbWithdraw> wait = wdMapper.selectList(new LambdaQueryWrapper<GbWithdraw>().eq(GbWithdraw::getStatus, "wait").select(GbWithdraw::getAmount));
         out.put("waitCount", wait.size());
         out.put("waitAmount", money(wait.stream().map(GbWithdraw::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)));
@@ -742,6 +758,20 @@ public class GbAdminController {
             return m;
         }).toList();
         return Result.OK(page(pg, rows));
+    }
+
+    /** 某个团长的售后扣款记录 */
+    @GetMapping("/commission/deducts")
+    public Result<?> commissionDeducts(@RequestParam String pointId, @RequestParam(defaultValue = "1") int pageNo, @RequestParam(defaultValue = "20") int pageSize) {
+        Page<GbLeaderDeduct> pg = dedMapper.selectPage(new Page<>(pageNo, Math.min(pageSize, 100)), new LambdaQueryWrapper<GbLeaderDeduct>()
+                .eq(GbLeaderDeduct::getPointId, pointId).orderByDesc(GbLeaderDeduct::getCreateTime));
+        return Result.OK(page(pg, new ArrayList<>(pg.getRecords())));
+    }
+
+    @PostMapping("/commission/deduct/revoke")
+    public Result<?> deductRevoke(@RequestBody Map<String, String> body) {
+        commission.revokeDeduct(body.get("id"), body.get("reason"), me());
+        return Result.OK("已撤销，钱退回团长可提现");
     }
 
     @PostMapping("/point/rate")
@@ -812,18 +842,29 @@ public class GbAdminController {
             GbMember mb = ms.get(l.getMemberId());
             m.put("nickname", mb == null ? null : mb.getNickname());
             m.put("phone", mb == null ? null : mb.getPhone());
+            m.put("canResend", GbNotifyService.canResend(l));
             return m;
         }).toList();
         Map<String, Object> out = page(pg, rows);
         Map<String, Long> counts = new LinkedHashMap<>();
         counts.put("", notifyMapper.selectCount(new LambdaQueryWrapper<GbNotifyLog>().eq(scene != null && !scene.isBlank(), GbNotifyLog::getScene, scene)));
-        for (String st : List.of("sent", "mock", "skipped", "failed"))
+        for (String st : List.of("sent", "mock", "skipped", "retry", "failed"))
             counts.put(st, notifyMapper.selectCount(new LambdaQueryWrapper<GbNotifyLog>().eq(GbNotifyLog::getStatus, st).eq(scene != null && !scene.isBlank(), GbNotifyLog::getScene, scene)));
         out.put("counts", counts);
         out.put("scenes", notify.configView());
         out.put("wxReady", notify.wxReady());
         out.put("state", notify.state());
         return Result.OK(out);
+    }
+
+    @PostMapping("/notify/resend")
+    public Result<?> notifyResend(@RequestBody Map<String, String> body) {
+        GbNotifyLog l = notify.resendNow(body.get("id"));
+        return switch (l.getStatus()) {
+            case "sent" -> Result.OK("已发送", l);
+            case "skipped" -> Result.OK("没发出去：" + l.getNote(), l);
+            default -> Result.error("还是没发出去：" + l.getNote());
+        };
     }
 
     // ================================================================ 提现审核
@@ -846,12 +887,16 @@ public class GbAdminController {
             GbLeaderAccount a = accs.get(w.getPointId());
             m.put("totalIncome", a == null ? null : a.getTotalIncome());
             m.put("totalWithdrawn", a == null ? null : a.getTotalWithdrawn());
+            // 能不能一键打到微信零钱，不能的原因
+            String why = "wait".equals(w.getStatus()) ? transfer.unavailable(w) : null;
+            m.put("autoPay", "wait".equals(w.getStatus()) && why == null);
+            m.put("autoPayWhy", why);
             return m;
         }).toList();
         Map<String, Object> out = page(pg, rows);
         Map<String, Long> counts = new LinkedHashMap<>();
         counts.put("", wdMapper.selectCount(null));
-        for (String st : List.of("wait", "paid", "rej")) counts.put(st, wdMapper.selectCount(new LambdaQueryWrapper<GbWithdraw>().eq(GbWithdraw::getStatus, st)));
+        for (String st : List.of("wait", "paying", "paid", "rej")) counts.put(st, wdMapper.selectCount(new LambdaQueryWrapper<GbWithdraw>().eq(GbWithdraw::getStatus, st)));
         out.put("counts", counts);
         return Result.OK(out);
     }
@@ -860,6 +905,29 @@ public class GbAdminController {
     public Result<?> withdrawApprove(@RequestBody Map<String, String> body) {
         commission.approve(body.get("id"), body.get("voucher"), me());
         return Result.OK("已登记打款");
+    }
+
+    /** 打款到团长微信零钱（商家转账） */
+    @PostMapping("/withdraw/transfer")
+    public Result<?> withdrawTransfer(@RequestBody Map<String, String> body) {
+        GbWithdraw w = transfer.start(body.get("id"), me());
+        return switch (w.getStatus()) {
+            case "paid" -> Result.OK("已打到团长微信零钱", w);
+            case "paying" -> Result.OK("WAIT_USER_CONFIRM".equals(w.getTransferState()) ? "已发起转账，等团长在小程序里确认收款" : "已发起转账，微信处理中", w);
+            default -> Result.error("没打成功：" + w.getTransferFail());
+        };
+    }
+
+    @PostMapping("/withdraw/transfer/sync")
+    public Result<?> withdrawTransferSync(@RequestBody Map<String, String> body) {
+        GbWithdraw w = transfer.sync(body.get("id"));
+        return Result.OK("paid".equals(w.getStatus()) ? "已到账" : "wait".equals(w.getStatus()) ? "转账没成功，已回到待审核" : "还在处理中", w);
+    }
+
+    @PostMapping("/withdraw/transfer/cancel")
+    public Result<?> withdrawTransferCancel(@RequestBody Map<String, String> body) {
+        GbWithdraw w = transfer.cancel(body.get("id"));
+        return Result.OK("wait".equals(w.getStatus()) ? "已撤销，回到待审核" : "已申请撤销，稍后刷新看结果", w);
     }
 
     @PostMapping("/withdraw/reject")

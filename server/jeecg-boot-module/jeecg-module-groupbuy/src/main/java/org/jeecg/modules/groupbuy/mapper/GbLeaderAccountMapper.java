@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 /** 余额一律用这里的原子 SQL 改，不要 updateById（并发下会覆盖） */
 public interface GbLeaderAccountMapper extends BaseMapper<GbLeaderAccount> {
 
-    @Insert("INSERT IGNORE INTO gb_leader_account (point_id, balance, frozen, total_income, total_withdrawn, update_time) VALUES (#{p}, 0, 0, 0, 0, NOW())")
+    @Insert("INSERT IGNORE INTO gb_leader_account (point_id, balance, frozen, total_income, total_withdrawn, total_deducted, update_time) VALUES (#{p}, 0, 0, 0, 0, 0, NOW())")
     int ensure(@Param("p") String pointId);
 
     /** 佣金入账 */
@@ -29,4 +29,12 @@ public interface GbLeaderAccountMapper extends BaseMapper<GbLeaderAccount> {
     /** 驳回：退回余额 */
     @Update("UPDATE gb_leader_account SET frozen = frozen - #{a}, balance = balance + #{a}, update_time = NOW() WHERE point_id = #{p} AND frozen >= #{a}")
     int unfreeze(@Param("p") String pointId, @Param("a") BigDecimal amount);
+
+    /** 团长责任售后扣款：直接从可提现扣，不够扣就记成负数（负数时提不了现，之后的佣金先抵上）；审核中的提现不动 */
+    @Update("UPDATE gb_leader_account SET balance = balance - #{a}, total_deducted = total_deducted + #{a}, update_time = NOW() WHERE point_id = #{p}")
+    int deduct(@Param("p") String pointId, @Param("a") BigDecimal amount);
+
+    /** 撤销扣款：钱退回可提现 */
+    @Update("UPDATE gb_leader_account SET balance = balance + #{a}, total_deducted = total_deducted - #{a}, update_time = NOW() WHERE point_id = #{p} AND total_deducted >= #{a}")
+    int undeduct(@Param("p") String pointId, @Param("a") BigDecimal amount);
 }

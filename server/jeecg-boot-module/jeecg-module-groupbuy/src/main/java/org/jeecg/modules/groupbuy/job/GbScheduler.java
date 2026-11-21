@@ -12,7 +12,9 @@ import org.jeecg.modules.groupbuy.mapper.GbOrderMapper;
 import org.jeecg.modules.groupbuy.mapper.GbPeriodMapper;
 import org.jeecg.modules.groupbuy.service.GbCommissionService;
 import org.jeecg.modules.groupbuy.service.GbCoreService;
+import org.jeecg.modules.groupbuy.service.GbNotifyService;
 import org.jeecg.modules.groupbuy.service.GbPayService;
+import org.jeecg.modules.groupbuy.service.GbTransferService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -32,6 +34,8 @@ public class GbScheduler {
     private final GbCoreService core;
     private final GbCommissionService commission;
     private final GbPayService pay;
+    private final GbNotifyService notify;
+    private final GbTransferService transfer;
 
     @Scheduled(initialDelay = 15_000, fixedDelay = 30_000)
     public void tick() {
@@ -75,6 +79,18 @@ public class GbScheduler {
             pay.retryRefunds();
         } catch (Exception e) {
             log.error("[团购] 退款重试出错", e);
+        }
+        try {
+            // 提现自动打款：打款中的去微信查结果
+            transfer.syncPaying();
+        } catch (Exception e) {
+            log.error("[团购] 同步提现转账出错", e);
+        }
+        try {
+            // 订阅消息临时失败的，到时间重发
+            notify.retryDue();
+        } catch (Exception e) {
+            log.error("[团购] 订阅消息重发出错", e);
         }
         try {
             // 提货满售后期的订单，团长佣金入账

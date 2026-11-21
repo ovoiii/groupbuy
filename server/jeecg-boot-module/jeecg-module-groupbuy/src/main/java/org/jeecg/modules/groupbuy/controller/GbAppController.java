@@ -19,6 +19,12 @@ import org.jeecg.modules.groupbuy.service.GbCommissionService;
 import org.jeecg.modules.groupbuy.service.GbCoreService;
 import org.jeecg.modules.groupbuy.service.GbLoginService;
 import org.jeecg.modules.groupbuy.service.GbPayService;
+import org.jeecg.modules.groupbuy.service.GbPosterService;
+import org.jeecg.modules.groupbuy.service.GbSmsService;
+import org.jeecg.modules.groupbuy.service.GbTransferService;
+import org.jeecg.common.util.IpUtils;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.jeecg.modules.groupbuy.service.GbWxService;
 import org.springframework.http.ResponseEntity;
 import org.jeecg.modules.groupbuy.service.GbNotifyService;
@@ -66,11 +72,15 @@ public class GbAppController {
     private final GbCommissionService commission;
     private final GbCommissionMapper commMapper;
     private final GbWithdrawMapper wdMapper;
+    private final GbLeaderDeductMapper dedMapper;
     private final GbViewService view;
     private final GbNotifyService notify;
     private final GbPayService pay;
     private final GbWxService wx;
     private final GbLoginService login;
+    private final GbSmsService sms;
+    private final GbPosterService poster;
+    private final GbTransferService transfer;
 
     @Value("${jeecg.path.upload:}")
     private String uploadPath;
@@ -93,7 +103,7 @@ public class GbAppController {
     @GetMapping("/config")
     public Result<?> config() {
         return Result.OK(Map.of("devLogin", props.isDevLogin(), "payMock", props.isPayMock(), "wxLogin", props.getWx().getAppid() != null && !props.getWx().getAppid().isBlank(),
-                "tmpl", notify.templates()));
+                "smsLogin", sms.enabled(), "tmpl", notify.templates()));
     }
 
     /** 用户在订阅框里点了「允许」的模板，每个多 1 次发送机会 */
@@ -149,6 +159,37 @@ public class GbAppController {
             return Result.error("微信服务暂时不可用，请稍后再试");
         }
         GbMember m = login.bind(openid, phone, body.get("pt"));
+        return Result.OK(Map.of("token", tokens.issue(m.getId()), "member", profile(m)));
+    }
+
+    /** 发短信验证码（防刷规则见 GbSmsService） */
+    @IgnoreAuth
+    @PostMapping("/sms/send")
+    public Result<?> smsSend(HttpServletRequest req, @RequestBody Map<String, String> body) {
+        return Result.OK("验证码已发送", sms.send(body.get("phone"), IpUtils.getIpAddr(req)));
+    }
+
+    /**
+     * 短信验证码登录。小程序里会同时带上 wx.login 的 code：把这个微信绑到手机号对应的账号上（和手机号快捷登录一样），付款要用；
+     * H5 等没有微信的地方只按手机号登录。
+     */
+    @IgnoreAuth
+    @PostMapping("/login/sms")
+    public Result<?> loginSms(@RequestBody Map<String, String> body) {
+        String phone = body.get("phone") == null ? null : body.get("phone").trim();
+        if (phone == null || !phone.matches("1\\d{10}")) return Result.error("请输入 11 位手机号");
+        // 先换 openid 再核验证码：微信出错时验证码不会白白作废
+        String openid = null, wxCode = body.get("wxCode");
+        if (wxCode != null && !wxCode.isBlank() && wx.ready()) {
+            try {
+                openid = wx.openid(wxCode);
+            } catch (IllegalStateException e) {
+                log.warn("[团购] 微信登录出错：{}", e.getMessage());
+                return Result.error("微信服务暂时不可用，请稍后再试");
+            }
+        }
+        sms.verify(phone, body.get("code"));
+        GbMember m = openid != null ? login.bind(openid, phone, body.get("pt")) : login.byPhone(phone, body.get("pt"));
         return Result.OK(Map.of("token", tokens.issue(m.getId()), "member", profile(m)));
     }
 
@@ -315,6 +356,31 @@ public class GbAppController {
         return Result.OK(g);
     }
 
+    // ================================================================ 分享海报
+
+    /** 分享海报 PNG：type=goods（id = 团品 id）或 home（本期团）；pt = 分享人带的提货点 */
+    @IgnoreAuth
+    @GetMapping("/poster")
+    public ResponseEntity<byte[]> poster(HttpServletRequest req, @RequestParam(defaultValue = "goods") String type, @RequestParam(required = false) String id,
+                                         @RequestParam(required = false) String pt) {
+        me(req);
+        try {
+            byte[] png = "home".equals(type) ? poster.homePoster(pt) : poster.goodsPoster(id, pt);
+            return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).cacheControl(CacheControl.noStore()).body(png);
+        } catch (org.jeecg.common.exception.JeecgBootException e) {
+            // 小程序用 downloadFile 拿图，出错时给个非 200 状态码，它才知道不是图片
+            return ResponseEntity.badRequest().contentType(new MediaType("text", "plain", StandardCharsets.UTF_8)).body(e.getMessage().getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    /** 小程序码 scene → 商品 / 提货点（小程序端自己也能解析，这里给 H5 和排查用） */
+    @IgnoreAuth
+    @GetMapping("/scene")
+    public Result<?> scene(@RequestParam String s) {
+        Map<String, String> m = GbPosterService.parseScene(s);
+        return m == null ? Result.error("二维码参数不对") : Result.OK(m);
+    }
+
     // ================================================================ 券
 
     @IgnoreAuth
@@ -427,6 +493,23 @@ public class GbAppController {
     @PostMapping("/pay/refund-notify")
     public ResponseEntity<?> refundNotify(HttpServletRequest req, @RequestBody String body) {
         return wxNotify(req, body, false);
+    }
+
+    /** 微信商家转账结果通知（团长提现到零钱） */
+    @IgnoreAuth
+    @PostMapping("/pay/transfer-notify")
+    public ResponseEntity<?> transferNotify(HttpServletRequest req, @RequestBody String body) {
+        com.wechat.pay.java.core.notification.RequestParam p = new com.wechat.pay.java.core.notification.RequestParam.Builder().serialNumber(req.getHeader("Wechatpay-Serial")).nonce(req.getHeader("Wechatpay-Nonce"))
+                .signature(req.getHeader("Wechatpay-Signature")).timestamp(req.getHeader("Wechatpay-Timestamp"))
+                .signType(req.getHeader("Wechatpay-Signature-Type")).body(body).build();
+        try {
+            transfer.handleNotify(p);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            boolean sign = GbPayService.isSignError(e);
+            log.warn("[团购] 微信转账通知处理失败：{}", e.getMessage());
+            return ResponseEntity.status(sign ? 401 : 500).body(Map.of("code", "FAIL", "message", sign ? "签名验证失败" : "处理失败"));
+        }
     }
 
     private ResponseEntity<?> wxNotify(HttpServletRequest req, String body, boolean payment) {
@@ -616,6 +699,7 @@ public class GbAppController {
         out.put("frozen", a.getFrozen());
         out.put("totalIncome", a.getTotalIncome());
         out.put("totalWithdrawn", a.getTotalWithdrawn());
+        out.put("totalDeducted", a.getTotalDeducted());
         out.put("estimate", money(commission.estimate(pt.getId()).getOrDefault(pt.getId(), BigDecimal.ZERO)));
         out.put("withdrawMin", props.getWithdrawMin());
         out.put("settleHours", props.getAftersaleWindowHours());
@@ -643,12 +727,15 @@ public class GbAppController {
         m.put("accountName", w.getAccountName());
         m.put("status", w.getStatus());
         m.put("reply", w.getReply());
+        // 打款中：等团长确认收款时小程序显示「确认收款」按钮
+        m.put("needConfirm", "paying".equals(w.getStatus()) && "WAIT_USER_CONFIRM".equals(w.getTransferState()) && w.getPackageInfo() != null);
+        m.put("transferFail", "wait".equals(w.getStatus()) ? w.getTransferFail() : null);
         m.put("createTime", w.getCreateTime());
         m.put("handleTime", w.getHandleTime());
         return m;
     }
 
-    /** 佣金入账明细（type=in）或提现记录（type=out），分页 */
+    /** 佣金入账明细（type=in）、提现记录（type=out）或售后扣款（type=ded），分页 */
     @IgnoreAuth
     @GetMapping("/leader/income/list")
     public Result<?> leaderIncomeList(HttpServletRequest req, @RequestParam(defaultValue = "in") String type, @RequestParam(defaultValue = "1") int pageNo) {
@@ -656,6 +743,24 @@ public class GbAppController {
         if ("out".equals(type)) {
             Page<GbWithdraw> pg = wdMapper.selectPage(new Page<>(pageNo, 20), new LambdaQueryWrapper<GbWithdraw>().eq(GbWithdraw::getPointId, pt.getId()).orderByDesc(GbWithdraw::getCreateTime));
             return Result.OK(Map.of("records", pg.getRecords().stream().map(this::withdrawVo).toList(), "total", pg.getTotal()));
+        }
+        if ("ded".equals(type)) {
+            Page<GbLeaderDeduct> pg = dedMapper.selectPage(new Page<>(pageNo, 20), new LambdaQueryWrapper<GbLeaderDeduct>().eq(GbLeaderDeduct::getPointId, pt.getId()).orderByDesc(GbLeaderDeduct::getCreateTime));
+            List<Map<String, Object>> rows = pg.getRecords().stream().map(d -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", d.getId());
+                m.put("orderNo", d.getOrderNo());
+                m.put("buyerName", d.getBuyerName());
+                m.put("asType", d.getAsType());
+                m.put("refundAmount", d.getRefundAmount());
+                m.put("amount", d.getAmount());
+                m.put("reason", d.getReason());
+                m.put("status", d.getStatus());
+                m.put("revokeReason", d.getRevokeReason());
+                m.put("createTime", d.getCreateTime());
+                return m;
+            }).toList();
+            return Result.OK(Map.of("records", rows, "total", pg.getTotal()));
         }
         Page<GbCommission> pg = commMapper.selectPage(new Page<>(pageNo, 20), new LambdaQueryWrapper<GbCommission>().eq(GbCommission::getPointId, pt.getId())
                 .orderByDesc(GbCommission::getSettleTime).orderByDesc(GbCommission::getPickupAt));
@@ -689,6 +794,28 @@ public class GbAppController {
         }
         GbWithdraw w = commission.apply(pt, m.getId(), amount, (String) body.get("method"), (String) body.get("accountName"), (String) body.get("accountNo"), (String) body.get("bankName"));
         return Result.OK("已提交，1–3 个工作日到账", withdrawVo(w));
+    }
+
+    /** 团长确认收款要的参数（wx.requestMerchantTransfer）：只能是自己提货点、正在等确认的那笔 */
+    @IgnoreAuth
+    @GetMapping("/leader/withdraw/confirm")
+    public Result<?> withdrawConfirmParams(HttpServletRequest req, @RequestParam String id) {
+        GbPoint pt = mustLeader(req);
+        GbWithdraw w = wdMapper.selectById(id);
+        if (w == null || !pt.getId().equals(w.getPointId())) return Result.error("提现单不存在");
+        if (!"paying".equals(w.getStatus()) || !"WAIT_USER_CONFIRM".equals(w.getTransferState()) || w.getPackageInfo() == null)
+            return Result.error("这笔现在不用确认收款");
+        return Result.OK(Map.of("mchId", props.getPay().getMchId(), "appId", props.getWx().getAppid(), "package", w.getPackageInfo()));
+    }
+
+    /** 确认收款后（或下拉刷新时）去微信查一下这笔转账 */
+    @IgnoreAuth
+    @PostMapping("/leader/withdraw/check")
+    public Result<?> withdrawCheck(HttpServletRequest req, @RequestBody Map<String, String> body) {
+        GbPoint pt = mustLeader(req);
+        GbWithdraw w = wdMapper.selectById(body.get("id"));
+        if (w == null || !pt.getId().equals(w.getPointId())) return Result.error("提现单不存在");
+        return Result.OK(withdrawVo(transfer.sync(w.getId())));
     }
 
     // ================================================================ 团长入驻申请

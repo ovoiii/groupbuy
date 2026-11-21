@@ -65,6 +65,18 @@ public class GbLoginService {
         return create(phone, openid, null, sourcePointId);
     }
 
+    /** 短信验证过的手机号（没有微信时）：有账号就登录，没有就新建 */
+    public GbMember byPhone(String phone, String sourcePointId) {
+        GbMember m = memberMapper.selectOne(new LambdaQueryWrapper<GbMember>().eq(GbMember::getPhone, phone));
+        if (m != null) return m;
+        try {
+            return create(phone, null, null, sourcePointId);
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // 同一个号同时登录两次
+            return memberMapper.selectOne(new LambdaQueryWrapper<GbMember>().eq(GbMember::getPhone, phone));
+        }
+    }
+
     /** 新建账号；从某个提货点的分享进来的，记下来源并默认选这个提货点 */
     public GbMember create(String phone, String openid, String nickname, String sourcePointId) {
         GbMember m = new GbMember();

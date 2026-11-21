@@ -17,6 +17,7 @@ public class GbWebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(gbAuthInterceptor).addPathPatterns("/gb/app/**")
                 .excludePathPatterns("/gb/app/login", "/gb/app/login/phone", "/gb/app/dev-login", "/gb/app/config",
-                        "/gb/app/pay/notify", "/gb/app/pay/refund-notify");
+                        "/gb/app/pay/notify", "/gb/app/pay/refund-notify", "/gb/app/pay/transfer-notify",
+                        "/gb/app/sms/send", "/gb/app/login/sms", "/gb/app/scene");
     }
 }

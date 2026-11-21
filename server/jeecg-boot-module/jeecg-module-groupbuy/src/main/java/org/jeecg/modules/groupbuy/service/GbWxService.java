@@ -95,6 +95,42 @@ public class GbWxService {
         return t;
     }
 
+    /**
+     * 小程序码（不限数量的那种）。scene 最多 32 个字符，扫码进 page 时以 scene 参数带上；
+     * envVersion：release 正式版 / trial 体验版 / develop 开发版。失败抛 IllegalStateException
+     */
+    public byte[] wxacode(String scene, String page, String envVersion, int width) {
+        if (!ready()) throw new IllegalStateException("没配小程序 AppID");
+        JSONObject body = new JSONObject();
+        body.put("scene", scene);
+        body.put("page", page);
+        body.put("check_path", false);
+        body.put("env_version", envVersion);
+        body.put("width", width);
+        String json = body.toJSONString();
+        for (int i = 0; i < 2; i++) {
+            HttpResponse<byte[]> r;
+            try {
+                r = http.send(HttpRequest.newBuilder(URI.create(base() + "/wxa/getwxacodeunlimit?access_token=" + token(i > 0))).timeout(Duration.ofSeconds(8))
+                        .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(json)).build(), HttpResponse.BodyHandlers.ofByteArray());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("调用微信接口被中断");
+            } catch (Exception e) {
+                throw new IllegalStateException("调用微信接口出错：" + e.getMessage(), e);
+            }
+            // 成功返回图片；失败返回 JSON（errcode）
+            String type = r.headers().firstValue("Content-Type").orElse("");
+            byte[] b = r.body();
+            if (!type.contains("json") && b.length > 0 && b[0] != '{') return b;
+            JSONObject j = JSON.parseObject(new String(b, StandardCharsets.UTF_8));
+            int code = j == null ? -1 : j.getIntValue("errcode");
+            if (i == 0 && (code == 40001 || code == 42001 || code == 40014)) continue;
+            throw new IllegalStateException("生成小程序码失败 " + code + "：" + (j == null ? "" : j.getString("errmsg")));
+        }
+        throw new IllegalStateException("生成小程序码失败");
+    }
+
     private JSONObject get(String url) {
         return send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(8)).GET().build());
     }

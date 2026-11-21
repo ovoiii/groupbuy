@@ -31,7 +31,10 @@
         <view class="b">分享本期团到小区群</view>
         <view class="s">邻居点进来自动选你的提货点{{ d.newcomers ? ` · 已带来 ${d.newcomers} 位新邻居` : '' }}</view>
       </view>
-      <button class="btn sm pri" open-type="share">去分享</button>
+      <view class="shr-btns">
+        <button class="btn sm pri" open-type="share">发到群</button>
+        <button class="btn sm line" @tap="go('/pages/poster/poster?type=home')">生成海报</button>
+      </view>
     </view>
 
     <view v-for="b in d.batches" :key="b.delivery.id" class="gb-card">
@@ -151,6 +154,8 @@ async function doSign() {
 .shr .ic { width: 40px; height: 40px; border-radius: 10px; background: $primary-soft; display: flex; align-items: center; justify-content: center; flex: none; }
 .shr .b { font-size: 15px; font-weight: 600; }
 .shr .s { font-size: 13px; color: $text-2; }
+.shr-btns { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.shr-btns .btn { margin: 0; }
 .recv { display: flex; gap: 12px; align-items: center; padding: 14px; }
 .recv .ic { width: 40px; height: 40px; border-radius: 10px; background: $primary-soft; display: flex; align-items: center; justify-content: center; flex: none; }
 .recv .b { font-size: 15px; font-weight: 600; }

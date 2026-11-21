@@ -480,6 +480,26 @@ groupbuy:
     public-key-id:             # 微信支付公钥 ID（PUB_KEY_ID_ 开头，新商户用公钥）；不填则自动下载平台证书
     public-key-path:           # 微信支付公钥 pub_key.pem 的路径
     notify-base:               # 后端对外的 https 地址，如 https://shop.example.com/jeecg-boot（支付 / 退款结果通知发到这里）
+    # 团长提现到微信零钱：商家转账（商户平台开通，场景选「佣金报酬」）。false = 只能线下打款后登记
+    transfer-enabled: true
+    transfer-scene-id: "1005"          # 转账场景 ID，1005 = 佣金报酬
+    transfer-perception: 劳务报酬       # 用户收款时看到的「收款感知」，要和场景匹配
+    transfer-remark: 邻里鲜团长佣金提现  # 微信账单里的备注，最多 32 个字
+    transfer-post-type: 社区团购团长     # 场景报备「岗位类型」（1005 场景要报）
+    transfer-pay-desc: 团购订单佣金      # 场景报备「报酬说明」
+  # 短信验证码登录。provider：mock 只写日志不发（开着开发登录时验证码直接返回给前端）/ aliyun 阿里云短信 / off 关掉
+  sms:
+    provider: mock
+    access-key-id:             # 阿里云 AccessKey（建议用只有短信权限的 RAM 子账号）
+    access-key-secret:
+    sign-name:                 # 短信签名，如 邻里鲜
+    template-code:             # 验证码模板 CODE，模板内容要有 ${code}
+    code-minutes: 5
+    interval-seconds: 60       # 同一手机号两次至少隔几秒
+    per-phone-daily: 10        # 同一手机号每天最多几条
+    per-ip-hourly: 20          # 同一 IP 每小时最多几条
+  # 小程序 H5 版地址。没配小程序 AppID 时，分享海报上画这个地址的二维码；都没配就不画码
+  h5-base:
   # 订阅消息：在公众平台「订阅消息 → 公共模板库」选用模板，把模板 ID 和字段填到这里。
   # 没配 AppID 或某个场景没填 template-id 时只记录不发送（后台「订单履约 → 消息通知」能看到内容）。
   # fields 左边是模板详情里的字段名（如 thing1），右边是内容名，可用的内容名见 GbNotifyService 顶部注释；

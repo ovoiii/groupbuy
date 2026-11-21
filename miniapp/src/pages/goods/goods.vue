@@ -19,7 +19,7 @@
     <view class="info">
       <view class="h1row">
         <view class="h1">{{ g.name }}</view>
-        <button class="share" open-type="share"><wd-icon name="share" size="18px" color="#078149" /><text>分享</text></button>
+        <view class="share" @tap="shareOpen = true"><wd-icon name="share" size="18px" color="#078149" /><text>分享</text></view>
       </view>
       <view class="sp">{{ g.spec }}</view>
       <view class="tags">
@@ -49,6 +49,19 @@
       <view v-if="g.detail" class="dl"><text class="dt">说明</text><text>{{ g.detail }}</text></view>
       <view class="guar"><wd-icon name="secured" size="16px" color="#078149" /><text>坏了包退：提货后 24 小时内，在「订单 → 申请售后」拍照提交，审核通过原路退款。</text></view>
     </view>
+    <view v-if="shareOpen" class="mask" @tap="shareOpen = false">
+      <view class="sheet" @tap.stop>
+        <view class="sheet-t">分享给邻居</view>
+        <view class="opts">
+          <!-- #ifdef MP-WEIXIN -->
+          <button class="opt" open-type="share" @tap="shareOpen = false"><view class="oc"><wd-icon name="chat" size="26px" color="#078149" /></view><text>发给好友 / 群</text></button>
+          <!-- #endif -->
+          <view class="opt" @tap="toPoster"><view class="oc"><wd-icon name="picture" size="26px" color="#078149" /></view><text>生成分享海报</text></view>
+        </view>
+        <view class="sheet-tip">邻居从你的分享进来，会自动选你的提货点</view>
+        <view class="cancel" @tap="shareOpen = false">取消</view>
+      </view>
+    </view>
     <view class="actbar-space" />
     <view class="actbar">
       <view class="cart-ic" @tap="goCart"><wd-icon name="cart" size="24px" color="#535b56" /><text>购物车</text><text v-if="count" class="badge">{{ count }}</text></view>
@@ -62,7 +75,7 @@
   </view>
 </template>
 <script lang="ts" setup>
-import { api, img, cart, pointStore, dayTime, toast, toDate, token, handleShareEntry, sharePointId } from '@/gb/util'
+import { api, img, cart, pointStore, dayTime, toast, toDate, token, handleShareEntry, sharePointId, entryQuery } from '@/gb/util'
 import SharedTip from '@/gb/SharedTip.vue'
 import Price from '@/gb/Price.vue'
 import Stepper from '@/gb/Stepper.vue'
@@ -78,6 +91,7 @@ const maxQty = computed(() => (g.value.limitQty ? Math.min(g.value.left, g.value
 const canBuy = computed(() => g.value.left > 0 && live.value && maxQty.value > 0)
 const hm = (t) => { const d = toDate(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
 const shared = ref<any>(null)
+const shareOpen = ref(false)
 let gid = ''
 // 从分享进来的新用户要先登录，登录完回到这页时在 onShow 里再加载
 async function load() {
@@ -86,12 +100,18 @@ async function load() {
   n.value = cart.qty(gid)
   count.value = cart.count()
 }
-onLoad((q: any) => {
+onLoad((raw: any) => {
+  // 分享链接带 id、pt；扫海报小程序码带 scene
+  const q = entryQuery(raw)
   gid = q.id
   handleShareEntry(q).then((p) => (shared.value = p))
   load().catch(() => {})
 })
 onShow(() => { if (!g.value) load().catch(() => {}) })
+function toPoster() {
+  shareOpen.value = false
+  uni.navigateTo({ url: `/pages/poster/poster?type=goods&id=${gid}` })
+}
 onShareAppMessage(() => ({
   title: g.value ? `¥${g.value.price} ${g.value.name}（${g.value.spec}），明天到小区自提` : '邻里鲜社区团购',
   path: `/pages/goods/goods?id=${gid}&pt=${sharePointId()}`,
@@ -117,6 +137,15 @@ const goCart = () => uni.switchTab({ url: '/pages/cart/cart' })
 .h1 { font-size: 19px; font-weight: 700; line-height: 1.4; flex: 1; min-width: 0; }
 .share { flex: none; margin: 0; padding: 0 0 0 10px; background: none; border-left: 1px solid $line; line-height: 1.2; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; color: $primary; }
 .share::after { border: none; }
+.mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 99; display: flex; align-items: flex-end; }
+.sheet { width: 100%; background: #fff; border-radius: 16px 16px 0 0; padding: 18px 16px calc(12px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.sheet-t { text-align: center; font-size: 15px; font-weight: 600; }
+.opts { display: flex; justify-content: center; gap: 48px; padding: 22px 0 10px; }
+.opt { margin: 0; padding: 0; background: none; line-height: 1.4; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; color: $text; }
+.opt::after { border: none; }
+.oc { width: 56px; height: 56px; border-radius: 50%; background: $primary-soft; display: flex; align-items: center; justify-content: center; }
+.sheet-tip { text-align: center; font-size: 12px; color: $text-3; padding-bottom: 12px; }
+.cancel { text-align: center; height: 46px; line-height: 46px; border-top: 1px solid $line; font-size: 15px; color: $text-2; }
 .sp { color: $text-2; margin-top: 4px; font-size: 14px; }
 .tags { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .pick { margin: 0 12px 10px; padding: 14px; border-radius: 12px; background: #fff; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }

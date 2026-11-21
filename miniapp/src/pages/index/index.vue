@@ -61,7 +61,7 @@
 </template>
 
 <script lang="ts" setup>
-import { api, post, img, cart, pointStore, token, toLogin, dayTime, toast, syncServerTime, handleShareEntry, sharePointId, rememberMe } from '@/gb/util'
+import { api, post, img, cart, pointStore, token, toLogin, dayTime, toast, syncServerTime, handleShareEntry, sharePointId, rememberMe, entryQuery } from '@/gb/util'
 import SharedTip from '@/gb/SharedTip.vue'
 import Price from '@/gb/Price.vue'
 import Stepper from '@/gb/Stepper.vue'
@@ -109,7 +109,7 @@ async function load() {
   qty.value = c
   loaded.value = true
 }
-onLoad((q: any) => { handleShareEntry(q).then((p) => (shared.value = p)) })
+onLoad((q: any) => { handleShareEntry(entryQuery(q)).then((p) => (shared.value = p)) })
 onShow(() => { load().catch(() => {}); qty.value = cart.get(); cart.badge() })
 function onSwitched(p: any) { shared.value = null; point.value = p; load().catch(() => {}) }
 

@@ -42,6 +42,7 @@ public class GbCoreService {
     private final GbAftersaleMapper asMapper;
     private final GbDeliveryMapper deliveryMapper;
     private final GbNotifyService notify;
+    private final GbCommissionService commission;
     private final GbRefundMapper refundMapper;
     private final ApplicationEventPublisher events;
 
@@ -506,8 +507,18 @@ public class GbCoreService {
         return money(cap.min(left).max(BigDecimal.ZERO));
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    public static final List<String> DUTIES = List.of("供应商", "团长", "平台", "物流");
+
     public void approveAftersale(String id, BigDecimal amount, String duty, String reply, String by) {
+        approveAftersale(id, amount, duty, reply, by, null, null);
+    }
+
+    /**
+     * 同意售后并退款。责任方是团长时，leaderCharge（为空 = 退款金额，0 = 不扣）从团长佣金里扣，chargeNote 是给团长看的说明。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void approveAftersale(String id, BigDecimal amount, String duty, String reply, String by, BigDecimal leaderCharge, String chargeNote) {
+        if (duty != null && !DUTIES.contains(duty)) throw fail("责任方选得不对");
         GbAftersale a = asMapper.selectById(id);
         if (a == null) throw fail("售后单不存在");
         if (!"wait".equals(a.getStatus())) throw fail("已经处理过了");
@@ -523,6 +534,11 @@ public class GbCoreService {
         orderMapper.update(null, new LambdaUpdateWrapper<GbOrder>().eq(GbOrder::getId, o.getId())
                 .set(GbOrder::getAfterStatus, "refunded").setSql("refund_amount = refund_amount + " + amt.toPlainString()));
         requestRefund(o, amt, "售后退款 " + a.getAsNo(), a.getId());
+        if ("团长".equals(duty)) {
+            BigDecimal charge = leaderCharge == null ? amt : leaderCharge;
+            if (charge.signum() < 0) throw fail("团长承担的钱不能是负数");
+            commission.deduct(a, o, amt, charge, chargeNote, by);
+        }
         notify.aftersale(o, "已退款", amt, reply);
     }
 

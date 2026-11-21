@@ -13,7 +13,7 @@
           <template v-else-if="column.key === 'point'">{{ r.order.pointName }}</template>
           <template v-else-if="column.key === 'left'">
             <span v-if="r.aftersale.status === 'wait'" class="mk-cutoff"><Icon icon="ant-design:clock-circle-outlined" :size="12" />剩 <b>{{ leftText(r.aftersale.deadline) }}</b></span>
-            <span v-else>{{ r.aftersale.duty || '—' }}</span>
+            <div v-else class="gb-cell"><span>{{ r.aftersale.duty || '—' }}</span><span v-if="r.deduct" class="sub" :class="{ strike: r.deduct.status === 'revoked' }">团长承担 {{ yuan(r.deduct.amount) }}</span></div>
           </template>
           <template v-else-if="column.key === 'status'"><span class="gb-tag" :class="ST[r.aftersale.status][1]">{{ ST[r.aftersale.status][0] }}</span></template>
           <template v-else-if="column.key === 'act'"><a @click="audit(r)">{{ r.aftersale.status === 'wait' ? '审核' : '查看' }}</a></template>
@@ -35,10 +35,16 @@
           <a-form layout="vertical">
             <a-form-item label="退款金额" :extra="`最多退 ${yuan(cur.aftersale.applyAmount)}（所选商品按实付比例折算）`"><a-input-number v-model:value="f.refundAmount" :min="0.01" :max="cur.aftersale.applyAmount" :precision="2" addon-after="元" style="width: 180px" /></a-form-item>
             <a-form-item label="责任方" :extra="cur.aftersale.type === '少件' ? '分拣少件一般记在平台' : '生鲜质量问题一般由供应商承担'"><a-radio-group v-model:value="f.duty" button-style="solid"><a-radio-button v-for="w in ['供应商', '团长', '平台', '物流']" :key="w" :value="w">{{ w }}</a-radio-button></a-radio-group></a-form-item>
+            <template v-if="f.duty === '团长'">
+              <a-form-item label="从团长佣金扣" :extra="`团长 ${cur.order.leaderName} 承担多少（0 = 只记责任不扣钱）。直接从可提现扣，不够扣记成负数，之后的佣金先抵上`">
+                <a-input-number v-model:value="f.leaderCharge" :min="0" :max="f.refundAmount" :precision="2" addon-after="元" style="width: 180px" /></a-form-item>
+              <a-form-item label="扣款说明（团长能看到）"><a-input v-model:value="f.chargeNote" :maxlength="60" /></a-form-item>
+            </template>
             <a-form-item label="回复买家（会显示在小程序里）"><a-textarea v-model:value="f.reply" :rows="3" /></a-form-item>
           </a-form></div>
         <div v-else class="gb-sec"><h3>处理结果</h3><dl class="gb-dl"><dt>结果</dt><dd>{{ ST[cur.aftersale.status][0] }}</dd>
           <template v-if="cur.aftersale.status === 'done'"><dt>退款</dt><dd>{{ yuan(cur.aftersale.refundAmount) }} · 原路退回</dd><dt>责任方</dt><dd>{{ cur.aftersale.duty }}</dd></template>
+          <template v-if="cur.deduct"><dt>团长承担</dt><dd>{{ yuan(cur.deduct.amount) }} · 已从佣金扣<span v-if="cur.deduct.status === 'revoked'" class="gb-muted">（已撤销：{{ cur.deduct.revokeReason }}）</span><div class="gb-muted">{{ cur.deduct.reason }}</div></dd></template>
           <dt>回复</dt><dd>{{ cur.aftersale.reply }}</dd><dt>处理人</dt><dd>{{ cur.aftersale.handleBy }} · {{ md(cur.aftersale.handleTime) }}</dd></dl></div>
       </template>
       <template #footer>
@@ -49,7 +55,7 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, onMounted, reactive, ref } from 'vue';
+  import { computed, onMounted, reactive, ref, watch } from 'vue';
   import { Modal, message } from 'ant-design-vue';
   import { Segmented as ASegmented } from 'ant-design-vue';
   import { Icon } from '/@/components/Icon';
@@ -78,16 +84,21 @@
   onMounted(async () => { syncServerTime((await gbApi.meta()).now); load(); });
 
   const open = ref(false), cur = ref<any>(null);
-  const f = reactive<any>({ refundAmount: 0, duty: '供应商', reply: '' });
+  const f = reactive<any>({ refundAmount: 0, duty: '供应商', reply: '', leaderCharge: 0, chargeNote: '' });
+  // 选了团长：默认团长承担全部退款；退款金额改小时跟着不超过它
+  watch(() => f.duty, (d) => { if (d === '团长') Object.assign(f, { leaderCharge: f.refundAmount, chargeNote: f.chargeNote || `${cur.value?.aftersale.type || '售后'}，责任在提货点` }); });
+  watch(() => f.refundAmount, (v) => { if (Number(f.leaderCharge) > Number(v)) f.leaderCharge = v; });
   function audit(r) {
     cur.value = r;
     const short = r.aftersale.type === '少件';
-    Object.assign(f, { refundAmount: r.aftersale.applyAmount, duty: short ? '平台' : '供应商',
+    Object.assign(f, { refundAmount: r.aftersale.applyAmount, duty: short ? '平台' : '供应商', leaderCharge: 0, chargeNote: '',
       reply: short ? '抱歉少给了您，已退款，钱会原路退回微信。' : '抱歉给您带来不好的体验，已退款，钱会原路退回微信。' });
     open.value = true;
   }
   async function approve() {
-    await gbApi.asApprove({ id: cur.value.aftersale.id, refundAmount: String(f.refundAmount), duty: f.duty, reply: f.reply });
+    const d: any = { id: cur.value.aftersale.id, refundAmount: String(f.refundAmount), duty: f.duty, reply: f.reply };
+    if (f.duty === '团长') Object.assign(d, { leaderCharge: String(f.leaderCharge ?? 0), chargeNote: f.chargeNote });
+    await gbApi.asApprove(d);
     open.value = false; load();
   }
   function reject() {
@@ -111,5 +122,6 @@
 <style lang="less" scoped>
   .quote { padding: 12px 14px; border-radius: 10px; background: var(--brand-bg-page); line-height: 1.7; }
   .photos { display: flex; gap: 8px; margin-top: 10px; }
+  .strike { text-decoration: line-through; }
   .ellipsis { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 </style>

@@ -2,13 +2,13 @@
 <template>
   <div class="gb-page">
     <div class="gb-head">
-      <div><h1>佣金结算</h1><p>团长按自己提货点的订单拿佣金。顾客提货满 24 小时、没有进行中的售后，佣金自动进团长的可提现余额。</p></div>
+      <div><h1>佣金结算</h1><p>团长按自己提货点的订单拿佣金。顾客提货满 24 小时、没有进行中的售后，佣金自动进团长的可提现余额。售后责任在团长的，审核时从可提现里扣。</p></div>
       <div class="acts"><a-button @click="go('/gb/withdraw')"><Icon icon="ant-design:transaction-outlined" />提现审核<span v-if="d.waitCount" class="badge">{{ d.waitCount }}</span></a-button></div>
     </div>
     <div class="gb-kpis">
       <div class="gb-kpi"><span class="k"><Icon icon="ant-design:hourglass-outlined" :size="15" />待结算（预估）</span><span class="v">{{ yuan(d.estimate) }}</span><span class="d">已付款还没到入账时间的订单</span></div>
       <div class="gb-kpi"><span class="k"><Icon icon="ant-design:calendar-outlined" :size="15" />本月入账</span><span class="v">{{ yuan(d.month) }}</span><span class="d">累计入账 {{ yuan(d.totalIncome) }}</span></div>
-      <div class="gb-kpi"><span class="k"><Icon icon="ant-design:wallet-outlined" :size="15" />团长可提现合计</span><span class="v">{{ yuan(d.balance) }}</span><span class="d">平台应付给团长、还没申请提现的钱</span></div>
+      <div class="gb-kpi"><span class="k"><Icon icon="ant-design:wallet-outlined" :size="15" />团长可提现合计</span><span class="v">{{ yuan(d.balance) }}</span><span class="d">平台应付给团长、还没申请提现的钱<template v-if="Number(d.owing) > 0">；有团长欠 {{ yuan(d.owing) }} 待抵扣</template></span></div>
       <div class="gb-kpi"><span class="k"><Icon icon="ant-design:transaction-outlined" :size="15" />待审核提现</span><span class="v">{{ d.waitCount ?? 0 }} 笔</span><span class="d">共 {{ yuan(d.waitAmount) }}</span></div>
     </div>
     <section class="gb-card">
@@ -19,8 +19,8 @@
           <template v-else-if="column.key === 'estimate'"><span class="gb-muted">{{ yuan(r.estimate) }}</span></template>
           <template v-else-if="column.key === 'month'">{{ yuan(r.month) }}</template>
           <template v-else-if="column.key === 'total'"><div class="gb-r">{{ yuan(r.totalIncome) }}<span class="sub">已提现 {{ yuan(r.totalWithdrawn) }}</span></div></template>
-          <template v-else-if="column.key === 'balance'"><div class="gb-r"><b>{{ yuan(r.balance) }}</b><span v-if="Number(r.frozen) > 0" class="sub warn">审核中 {{ yuan(r.frozen) }}</span></div></template>
-          <template v-else-if="column.key === 'act'"><a @click="detail(r)">入账明细</a></template>
+          <template v-else-if="column.key === 'balance'"><div class="gb-r"><b :class="{ neg: Number(r.balance) < 0 }">{{ yuan(r.balance) }}</b><span v-if="Number(r.frozen) > 0" class="sub warn">审核中 {{ yuan(r.frozen) }}</span><span v-if="Number(r.totalDeducted) > 0" class="sub">售后扣款 {{ yuan(r.totalDeducted) }}</span></div></template>
+          <template v-else-if="column.key === 'act'"><a @click="detail(r)">明细</a></template>
         </template>
         <template #emptyText><div class="gb-empty"><b>还没有合作中的团长</b></div></template>
       </a-table>
@@ -35,10 +35,23 @@
       <a-input-number v-model:value="rate" :min="0" :max="30" :step="0.5" :precision="1" addon-after="%" style="width: 160px" />
     </a-modal>
 
-    <a-drawer v-model:open="listOpen" :title="cur ? cur.leaderName + ' · 佣金入账明细' : ''" :width="720">
+    <a-drawer v-model:open="listOpen" :title="cur ? cur.leaderName + ' · 佣金明细' : ''" :width="760">
       <template v-if="cur">
-        <div class="sum"><div><span>可提现</span><b>{{ yuan(cur.balance) }}</b></div><div><span>审核中</span><b>{{ yuan(cur.frozen) }}</b></div><div><span>累计入账</span><b>{{ yuan(cur.totalIncome) }}</b></div><div><span>累计提现</span><b>{{ yuan(cur.totalWithdrawn) }}</b></div></div>
-        <a-table class="gb-table" :data-source="list" :columns="lcols" :loading="listLoading" :row-key="(x) => x.c.id" size="small"
+        <div class="sum"><div><span>可提现</span><b :class="{ neg: Number(cur.balance) < 0 }">{{ yuan(cur.balance) }}</b></div><div><span>审核中</span><b>{{ yuan(cur.frozen) }}</b></div><div><span>累计入账</span><b>{{ yuan(cur.totalIncome) }}</b></div><div><span>累计提现</span><b>{{ yuan(cur.totalWithdrawn) }}</b></div><div><span>售后扣款</span><b>{{ yuan(cur.totalDeducted) }}</b></div></div>
+        <a-segmented v-model:value="tab" :options="[{ value: 'in', label: '佣金入账' }, { value: 'ded', label: '售后扣款' }]" style="margin-bottom: 12px" @change="loadList(1)" />
+        <a-table v-if="tab === 'ded'" class="gb-table" :data-source="list" :columns="dcols" :loading="listLoading" row-key="id" size="small"
+          :pagination="{ current: pageNo, pageSize: 20, total, showSizeChanger: false, onChange: loadList }">
+          <template #bodyCell="{ column, record: x }">
+            <template v-if="column.key === 'as'"><div class="gb-cell"><span>{{ x.asNo }} · {{ x.asType }}</span><span class="sub">订单 {{ x.orderNo }} · {{ x.buyerName }}</span></div></template>
+            <template v-else-if="column.key === 'reason'"><div class="gb-cell"><span>{{ x.reason }}</span><span v-if="x.status === 'revoked'" class="sub">已撤销：{{ x.revokeReason }}（{{ x.revokeBy }}）</span></div></template>
+            <template v-else-if="column.key === 'refund'">{{ yuan(x.refundAmount) }}</template>
+            <template v-else-if="column.key === 'amt'"><b :class="x.status === 'revoked' ? 'strike' : 'neg'">-{{ yuan(x.amount) }}</b></template>
+            <template v-else-if="column.key === 'time'">{{ md(x.createTime) }}</template>
+            <template v-else-if="column.key === 'act'"><a v-if="x.status === 'done'" @click="revoke(x)">撤销</a></template>
+          </template>
+          <template #emptyText><div class="gb-empty"><b>没有售后扣款</b><span>售后审核时责任方选「团长」才会扣</span></div></template>
+        </a-table>
+        <a-table v-else class="gb-table" :data-source="list" :columns="lcols" :loading="listLoading" :row-key="(x) => x.c.id" size="small"
           :pagination="{ current: pageNo, pageSize: 20, total, showSizeChanger: false, onChange: loadList }">
           <template #bodyCell="{ column, record: x }">
             <template v-if="column.key === 'order'"><div class="gb-cell"><span>{{ x.c.orderNo }}</span><span class="sub">{{ x.periodName }} · {{ x.c.buyerName }}</span></div></template>
@@ -55,7 +68,8 @@
 </template>
 
 <script lang="ts" setup>
-  import { onMounted, ref } from 'vue';
+  import { h, onMounted, ref } from 'vue';
+  import { Input, Modal, message, Segmented as ASegmented } from 'ant-design-vue';
   import { useRouter } from 'vue-router';
   import { Icon } from '/@/components/Icon';
   import { gbApi, yuan, pct, md } from '../api';
@@ -83,17 +97,33 @@
     rateOpen.value = false; load();
   }
 
-  const listOpen = ref(false), list = ref<any[]>([]), total = ref(0), pageNo = ref(1), listLoading = ref(false);
+  const listOpen = ref(false), list = ref<any[]>([]), total = ref(0), pageNo = ref(1), listLoading = ref(false), tab = ref('in');
   async function loadList(p = 1) {
-    pageNo.value = p; listLoading.value = true;
+    pageNo.value = p; listLoading.value = true; list.value = [];
     try {
-      const r = await gbApi.commissionList({ pointId: cur.value.pointId, pageNo: p, pageSize: 20 });
+      const q = { pointId: cur.value.pointId, pageNo: p, pageSize: 20 };
+      const r = await (tab.value === 'ded' ? gbApi.commissionDeducts(q) : gbApi.commissionList(q));
       list.value = r.records; total.value = r.total;
     } finally {
       listLoading.value = false;
     }
   }
-  function detail(r) { cur.value = r; list.value = []; listOpen.value = true; loadList(1); }
+  function detail(r) { cur.value = r; tab.value = 'in'; list.value = []; listOpen.value = true; loadList(1); }
+  function revoke(x) {
+    const reason = ref('');
+    Modal.confirm({
+      title: `撤销这笔 ${yuan(x.amount)} 的扣款？`,
+      content: () => h('div', [h('p', { class: 'gb-muted' }, '钱退回团长可提现，团长能看到撤销原因。'), h(Input, { value: reason.value, 'onUpdate:value': (v) => (reason.value = v), placeholder: '撤销原因，如：复核后是物流压坏的', maxlength: 60 })]),
+      okText: '撤销扣款',
+      onOk: async () => {
+        if (!reason.value.trim()) { message.warning('写一下撤销原因'); return Promise.reject(); }
+        await gbApi.deductRevoke({ id: x.id, reason: reason.value });
+        await load();
+        cur.value = d.value.records.find((p) => p.pointId === cur.value.pointId) || cur.value;
+        loadList(pageNo.value);
+      },
+    });
+  }
 
   const cols = [
     { title: '团长 / 提货点', key: 'leader' },
@@ -103,6 +133,14 @@
     { title: '累计入账', key: 'total', align: 'right' as const, width: 150 },
     { title: '可提现', key: 'balance', align: 'right' as const, width: 150 },
     { title: '操作', key: 'act', width: 100 },
+  ];
+  const dcols = [
+    { title: '售后', key: 'as', width: 220 },
+    { title: '说明', key: 'reason' },
+    { title: '退款', key: 'refund', align: 'right' as const, width: 90 },
+    { title: '扣团长', key: 'amt', align: 'right' as const, width: 100 },
+    { title: '时间', key: 'time', width: 100 },
+    { title: '', key: 'act', width: 60 },
   ];
   const lcols = [
     { title: '订单', key: 'order' },
@@ -117,8 +155,10 @@
   .rate { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
   .warn { color: var(--brand-mark) !important; }
   .plus { color: var(--brand-success); }
+  .neg { color: var(--brand-danger, #e12a24); }
+  .strike { color: var(--brand-text-3); text-decoration: line-through; }
   .badge { margin-left: 6px; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: var(--brand-danger, #e12a24); color: #fff; font-size: 12px; display: inline-block; }
-  .sum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
+  .sum { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px;
     > div { padding: 12px 14px; border-radius: 8px; background: var(--brand-bg-page); display: flex; flex-direction: column; gap: 2px; }
     span { font-size: 12px; color: var(--brand-text-3); } b { font-size: 16px; } }
 </style>

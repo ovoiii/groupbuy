@@ -75,6 +75,7 @@ public class GbPayService {
     private volatile JsapiServiceExtension jsapi;
     private volatile RefundService refundApi;
     private volatile NotificationParser parser;
+    private volatile Config config;
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "gb-pay");
         t.setDaemon(true);
@@ -130,12 +131,24 @@ public class GbPayService {
             log.error("[团购] 微信支付初始化失败", e);
             throw fail("微信支付初始化失败，请联系管理员");
         }
+        config = c;
         refundApi = new RefundService.Builder().config(c).build();
         parser = new NotificationParser((NotificationConfig) c);
         jsapi = new JsapiServiceExtension.Builder().config(c).signType("RSA").build();
     }
 
-    private String notifyUrl(String path) {
+    /** 给商家转账用（同一份商户配置） */
+    Config config() {
+        init();
+        return config;
+    }
+
+    NotificationParser parser() {
+        init();
+        return parser;
+    }
+
+    String notifyUrl(String path) {
         return props.getPay().getNotifyBase().replaceAll("/+$", "") + path;
     }
 

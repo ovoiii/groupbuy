@@ -3,6 +3,7 @@ package org.jeecg.modules.groupbuy.service;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,8 @@ import java.util.regex.Pattern;
  *   <li>没配 AppID 或这个场景没配模板：只写一条 mock 记录，方便开发时在后台「消息通知」里看内容。</li>
  *   <li>微信是一次性订阅：用户点一次「允许」只能发一条。小程序上报后记在 gb_notify_sub，发一条扣一次，没次数就不发。</li>
  *   <li>等业务事务提交后再在后台线程发，微信接口慢或出错都不影响业务。</li>
+ *   <li>临时失败（网络出错、微信繁忙、频率超限）：1、5、30 分钟后各自动重发一次，等待期间订阅次数先占着；
+ *       都失败了记为 failed 并退回次数，后台可以手动重发。模板、openid、字段内容不对这类重发也没用的，直接记 failed。</li>
  * </ul>
  * 各场景可用的内容：
  * <pre>
@@ -59,6 +62,11 @@ public class GbNotifyService {
     private final GbPointMapper pointMapper;
     private final GbPeriodMapper periodMapper;
     private final GbWxService wx;
+
+    /** 第 1、2、3 次失败后，隔多少分钟重发；第 4 次还失败就放弃 */
+    static final int[] RETRY_MINUTES = {1, 5, 30};
+    /** 微信返回这些码说明是临时问题，重发可能成功：-1 系统繁忙，45009 / 45011 调用太频繁 */
+    static final Set<Integer> TRANSIENT = Set.of(-1, 45009, 45011);
 
     private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "gb-notify");
@@ -244,6 +252,8 @@ public class GbNotifyService {
         lg.setCreateTime(new Date());
         String tmpl = templateOf(scene);
         lg.setTemplateId(tmpl);
+        lg.setPage(page);
+        lg.setAttempts(0);
         Map<String, String> fields = tmpl == null ? Map.of() : props.getNotify().getScenes().get(scene).getFields();
         lg.setContent(cut(JSON.toJSONString(fields.isEmpty() ? readable(values) : data(fields, values)), 1000));
 
@@ -266,36 +276,131 @@ public class GbNotifyService {
     }
 
     private void post(GbNotifyLog lg, String openid, String tmpl, String page, Map<String, Object> data) {
+        lg.setPayload(JSON.toJSONString(data));
+        call(lg, openid, false);
+    }
+
+    /**
+     * 调微信发一次（首发和重发都走这里）。调用前订阅次数已经扣好：
+     * 成功 / 用户拒收 → 次数用掉；临时失败且还能重发 → 次数先占着，等重发；其他失败 → 退回次数。
+     */
+    private void call(GbNotifyLog lg, String openid, boolean manual) {
         JSONObject body = new JSONObject();
         body.put("touser", openid);
-        body.put("template_id", tmpl);
-        body.put("page", page);
+        body.put("template_id", lg.getTemplateId());
+        body.put("page", lg.getPage());
         body.put("miniprogram_state", props.getNotify().getState());
         body.put("lang", "zh_CN");
-        body.put("data", data);
+        body.put("data", JSON.parseObject(lg.getPayload()));
+        int n = (lg.getAttempts() == null ? 0 : lg.getAttempts()) + 1;
+        lg.setAttempts(n);
+        String err;
+        boolean transientErr;
         try {
             JSONObject r = wx.postWithToken("/cgi-bin/message/subscribe/send", body);
             int code = r.getIntValue("errcode");
             if (code == 0) {
-                done(lg, "sent", null);
-            } else if (code == 43101) {
-                // 用户拒收（在设置里关了），这次次数作废
-                done(lg, "skipped", "用户拒收：" + r.getString("errmsg"));
-            } else {
-                logMapper.returnQuota(lg.getMemberId(), tmpl);
-                done(lg, "failed", "微信返回 " + code + "：" + r.getString("errmsg"));
+                done(lg, "sent", n > 1 ? "第 " + n + " 次发送成功" : null);
+                return;
             }
+            if (code == 43101) {
+                // 用户拒收（在设置里关了），这次次数作废，重发也没用
+                done(lg, "skipped", "用户拒收：" + r.getString("errmsg"));
+                return;
+            }
+            err = "微信返回 " + code + "：" + r.getString("errmsg");
+            transientErr = TRANSIENT.contains(code);
         } catch (Exception e) {
-            logMapper.returnQuota(lg.getMemberId(), tmpl);
-            done(lg, "failed", "调用微信接口出错：" + e.getMessage());
+            // 网络出错、拿不到 access_token
+            String msg = String.valueOf(e.getMessage());
+            err = msg.startsWith("调用微信接口出错") ? msg : "调用微信接口出错：" + msg;
+            transientErr = true;
+        }
+        if (transientErr && !manual && n <= RETRY_MINUTES.length) {
+            int wait = RETRY_MINUTES[n - 1];
+            lg.setNextRetryTime(new Date(System.currentTimeMillis() + wait * 60_000L));
+            done(lg, "retry", "第 " + n + " 次失败，" + wait + " 分钟后自动重发。" + err);
+        } else {
+            logMapper.returnQuota(lg.getMemberId(), lg.getTemplateId());
+            done(lg, "failed", (n > 1 ? "发了 " + n + " 次都失败。" : "") + err);
         }
     }
 
     private void done(GbNotifyLog lg, String status, String note) {
         lg.setStatus(status);
         lg.setNote(cut(note, 255));
-        logMapper.insert(lg);
+        if (!"retry".equals(status)) lg.setNextRetryTime(null);
+        lg.setUpdateTime(new Date());
+        if (lg.getId() == null) {
+            logMapper.insert(lg);
+        } else {
+            // 重发：整行覆盖（nextRetryTime 置空也要写进去）
+            logMapper.update(lg, new LambdaUpdateWrapper<GbNotifyLog>().eq(GbNotifyLog::getId, lg.getId())
+                    .set(GbNotifyLog::getNextRetryTime, lg.getNextRetryTime()));
+        }
         if ("failed".equals(status)) log.warn("[团购] 订阅消息 {} 发送失败：{}", lg.getScene(), note);
+        else if ("retry".equals(status)) log.info("[团购] 订阅消息 {} 暂时没发出去，稍后重发：{}", lg.getScene(), note);
+    }
+
+    // ======================================================== 重发
+
+    /** 定时任务调用：到时间的「等待重发」逐条重发，返回处理条数 */
+    public int retryDue() {
+        List<GbNotifyLog> due = logMapper.selectList(new LambdaQueryWrapper<GbNotifyLog>().eq(GbNotifyLog::getStatus, "retry")
+                .le(GbNotifyLog::getNextRetryTime, new Date()).orderByAsc(GbNotifyLog::getNextRetryTime).last("limit 50"));
+        int n = 0;
+        for (GbNotifyLog lg : due) {
+            try {
+                if (resend(lg, false)) n++;
+            } catch (Exception e) {
+                log.error("[团购] 订阅消息 {} 重发出错", lg.getId(), e);
+            }
+        }
+        return n;
+    }
+
+    /** 后台手动重发：「失败」的要重新扣一次订阅次数；「等待重发」的不用等，马上发。返回发送后的状态 */
+    public GbNotifyLog resendNow(String id) {
+        GbNotifyLog lg = logMapper.selectById(id);
+        if (lg == null) throw GbCoreService.fail("记录不存在");
+        if (!canResend(lg)) throw GbCoreService.fail("这条不能重发（只有发送失败的可以）");
+        if ("failed".equals(lg.getStatus()) && logMapper.useQuota(lg.getMemberId(), lg.getTemplateId()) == 0)
+            throw GbCoreService.fail("用户已经没有订阅次数了，要等他下次在小程序里点「允许」");
+        if (!resend(lg, true)) {
+            if ("failed".equals(lg.getStatus())) logMapper.returnQuota(lg.getMemberId(), lg.getTemplateId());
+            throw GbCoreService.fail("正在发送，稍后刷新看结果");
+        }
+        return logMapper.selectById(id);
+    }
+
+    public static boolean canResend(GbNotifyLog lg) {
+        return ("failed".equals(lg.getStatus()) || "retry".equals(lg.getStatus())) && notBlank(lg.getPayload()) && notBlank(lg.getTemplateId());
+    }
+
+    /**
+     * 重发一条。先用条件更新「抢」这条记录（状态和次数都没变才抢得到），定时任务和后台同时点也只发一次。
+     * 抢到后把下次重发时间推后 10 分钟，万一中途挂了，之后还会再试。返回 false = 被别人抢走了
+     */
+    private boolean resend(GbNotifyLog lg, boolean manual) {
+        int attempts = lg.getAttempts() == null ? 0 : lg.getAttempts();
+        int got = logMapper.update(null, new LambdaUpdateWrapper<GbNotifyLog>().eq(GbNotifyLog::getId, lg.getId())
+                .eq(GbNotifyLog::getStatus, lg.getStatus()).eq(GbNotifyLog::getAttempts, attempts)
+                .set(GbNotifyLog::getStatus, "retry").set(GbNotifyLog::getNextRetryTime, new Date(System.currentTimeMillis() + 10 * 60_000L))
+                .set(GbNotifyLog::getUpdateTime, new Date()));
+        if (got == 0) return false;
+        lg.setStatus("retry");
+        // 发之前再看一眼：模板换了、微信没配了、用户没 openid 了，就别发了
+        String tmpl = templateOf(lg.getScene());
+        GbMember m = lg.getMemberId() == null ? null : memberMapper.selectById(lg.getMemberId());
+        String stop = !wxReady() ? "微信 AppID 没配了" : !lg.getTemplateId().equals(tmpl) ? "这个场景的模板已经换了，旧消息不再发"
+                : m == null || !notBlank(m.getOpenid()) ? "用户没有 openid 了" : null;
+        if (stop != null) {
+            logMapper.returnQuota(lg.getMemberId(), lg.getTemplateId());
+            done(lg, "failed", stop);
+            return true;
+        }
+        call(lg, m.getOpenid(), manual);
+        return true;
     }
 
     // ======================================================== 按微信字段类型整理内容

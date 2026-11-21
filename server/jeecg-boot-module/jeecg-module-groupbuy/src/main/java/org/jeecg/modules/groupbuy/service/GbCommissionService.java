@@ -30,6 +30,7 @@ import static org.jeecg.modules.groupbuy.service.GbCoreService.money;
  *   <li>比例在付款时记到订单上（gb_order.commission_rate），老订单没有记的按提货点当前比例。</li>
  *   <li>顾客提货满「售后期」小时、且没有进行中的售后，定时任务自动入账到可提现余额。没提货的订单没有佣金。</li>
  *   <li>提现：最少 withdraw-min 元，同时只能一笔在审核；审核通过 = 运营线下打完款后登记流水号。</li>
+ *   <li>售后扣款：售后责任方是团长时，退款的全部或一部分从可提现扣；不够扣记成负数，之后的佣金先抵上。扣错了可以撤销。</li>
  * </ul>
  */
 @Slf4j
@@ -40,6 +41,7 @@ public class GbCommissionService {
     private final GbCommissionMapper commMapper;
     private final GbLeaderAccountMapper accMapper;
     private final GbWithdrawMapper wdMapper;
+    private final GbLeaderDeductMapper dedMapper;
     private final GbPointMapper pointMapper;
     private final TransactionTemplate tx;
     private final GbNotifyService notify;
@@ -139,7 +141,60 @@ public class GbCommissionService {
     }
 
     public GbWithdraw pendingWithdraw(String pointId) {
-        return wdMapper.selectOne(new LambdaQueryWrapper<GbWithdraw>().eq(GbWithdraw::getPointId, pointId).eq(GbWithdraw::getStatus, "wait").last("limit 1"));
+        return wdMapper.selectOne(new LambdaQueryWrapper<GbWithdraw>().eq(GbWithdraw::getPointId, pointId).in(GbWithdraw::getStatus, "wait", "paying").last("limit 1"));
+    }
+
+    // ======================================================== 售后扣款
+
+    /** 团长责任售后扣款。在售后审核的事务里调用；同一个售后只能扣一次（唯一索引） */
+    @Transactional(rollbackFor = Exception.class)
+    public GbLeaderDeduct deduct(GbAftersale a, GbOrder o, BigDecimal refund, BigDecimal amount, String reason, String by) {
+        amount = money(amount);
+        if (amount.signum() <= 0) return null;
+        if (amount.compareTo(refund) > 0) throw fail("团长承担的钱不能超过退款金额 " + refund + " 元");
+        GbLeaderDeduct d = new GbLeaderDeduct();
+        d.setPointId(o.getPointId());
+        d.setAftersaleId(a.getId());
+        d.setAsNo(a.getAsNo());
+        d.setOrderId(o.getId());
+        d.setOrderNo(o.getOrderNo());
+        d.setBuyerName(o.getBuyerName());
+        d.setAsType(a.getType());
+        d.setRefundAmount(refund);
+        d.setAmount(amount);
+        d.setReason(reason == null || reason.isBlank() ? a.getType() + "，责任在提货点" : reason.trim());
+        d.setStatus("done");
+        d.setCreateBy(by);
+        d.setCreateTime(new Date());
+        try {
+            dedMapper.insert(d);
+        } catch (DuplicateKeyException e) {
+            throw fail("这个售后已经扣过团长的钱了");
+        }
+        accMapper.ensure(o.getPointId());
+        accMapper.deduct(o.getPointId(), amount);
+        log.info("[团购] 售后 {} 从提货点 {} 佣金扣 {}", a.getAsNo(), o.getPointId(), amount);
+        return d;
+    }
+
+    /** 撤销扣款，钱退回团长可提现 */
+    @Transactional(rollbackFor = Exception.class)
+    public void revokeDeduct(String id, String reason, String by) {
+        if (reason == null || reason.isBlank()) throw fail("写一下撤销原因，团长能看到");
+        GbLeaderDeduct d = dedMapper.selectById(id);
+        if (d == null) throw fail("扣款记录不存在");
+        int n = dedMapper.update(null, new LambdaUpdateWrapper<GbLeaderDeduct>().eq(GbLeaderDeduct::getId, id).eq(GbLeaderDeduct::getStatus, "done")
+                .set(GbLeaderDeduct::getStatus, "revoked").set(GbLeaderDeduct::getRevokeReason, reason.trim())
+                .set(GbLeaderDeduct::getRevokeBy, by).set(GbLeaderDeduct::getRevokeTime, new Date()));
+        if (n == 0) throw fail("已经撤销过了");
+        if (accMapper.undeduct(d.getPointId(), d.getAmount()) == 0) throw fail("账户金额对不上，请联系技术处理");
+    }
+
+    /** 售后 id → 扣款记录（含已撤销） */
+    public Map<String, GbLeaderDeduct> deductsOf(Collection<String> aftersaleIds) {
+        if (aftersaleIds.isEmpty()) return Map.of();
+        return dedMapper.selectList(new LambdaQueryWrapper<GbLeaderDeduct>().in(GbLeaderDeduct::getAftersaleId, aftersaleIds))
+                .stream().collect(Collectors.toMap(GbLeaderDeduct::getAftersaleId, Function.identity()));
     }
 
     // ======================================================== 提现
@@ -163,7 +218,7 @@ public class GbCommissionService {
         accMapper.ensure(pt.getId());
         // 锁住账户行，防止同时提交两笔
         accMapper.selectOne(new LambdaQueryWrapper<GbLeaderAccount>().eq(GbLeaderAccount::getPointId, pt.getId()).last("FOR UPDATE"));
-        if (pendingWithdraw(pt.getId()) != null) throw fail("还有一笔提现在审核，处理完才能再提");
+        if (pendingWithdraw(pt.getId()) != null) throw fail("还有一笔提现在处理，到账后才能再提");
         if (accMapper.freeze(pt.getId(), amount) == 0) throw fail("可提现余额不够");
         GbWithdraw w = new GbWithdraw();
         w.setWdNo(newNo());

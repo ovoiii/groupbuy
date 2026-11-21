@@ -1,4 +1,5 @@
 /* 邻里鲜小程序 · 接口、登录、购物车、时间工具（后端 /gb/app/**，见 GbAppController） */
+import { parseScene } from './scene'
 
 // H5 开发走 vite 代理 /api，小程序直连后端（开发者工具里勾「不校验合法域名」）
 const BASE = (() => {
@@ -210,6 +211,39 @@ export async function handleShareEntry(q: any): Promise<any | null> {
 }
 /** 登录接口带上分享来源（只对新注册的账号生效） */
 export const fromPoint = () => (uni.getStorageSync(FROM_PT) as string) || undefined
+
+/** 扫海报上的小程序码进来时参数在 scene 里（见 gb/scene.ts），转成和分享链接一样的 {id, pt} */
+export function entryQuery(q: any): any {
+  const info = parseScene(q?.scene)
+  if (!info) return q || {}
+  return { ...q, id: info.id || q.id, pt: info.pt || q.pt }
+}
+
+// ---------------- 分享海报 ----------------
+/** 让后端画海报（带小程序码和分享人的提货点），下载成临时文件；返回本地路径 */
+export function downloadPoster(type: string, id = ''): Promise<string> {
+  const pt = sharePointId()
+  const url = `${BASE}/gb/app/poster?type=${type}&id=${encodeURIComponent(id)}&pt=${encodeURIComponent(pt)}`
+  return new Promise((resolve, reject) => {
+    uni.downloadFile({
+      url,
+      header: { 'X-Gb-Token': token.get() || '' },
+      success: (r) => {
+        if (r.statusCode !== 200) return reject(new Error(type === 'home' ? '现在没有正在进行的团，开团后再来' : '海报没生成出来，请稍后再试'))
+        // 出错时后端回的是 JSON 不是图片：用 getImageInfo 判断
+        uni.getImageInfo({
+          src: r.tempFilePath,
+          success: () => resolve(r.tempFilePath),
+          fail: () => reject(new Error(token.get() ? '海报没生成出来，请稍后再试' : '请先登录')),
+        })
+      },
+      fail: () => reject(new Error('网络不太好，请重试')),
+    })
+  })
+}
+
+// ---------------- 短信验证码 ----------------
+export const sendSmsCode = (phone: string) => post<{ interval: number; devCode?: string }>('/sms/send', { phone })
 
 // ---------------- 地图导航 ----------------
 /** 打开微信内置地图（可以再跳高德 / 百度 / 腾讯地图导航）；没标位置或打不开时复制地址 */
